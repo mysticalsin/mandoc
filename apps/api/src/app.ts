@@ -15,7 +15,10 @@ import {
   clearCookie,
   cookieValue,
   csrfAllows,
+  PASSWORD_ATTEMPT_LIMIT,
+  PASSWORD_WINDOW_MS,
   downloadDecision,
+  viewDecision,
   expiryAllowed,
   generateOtpCode,
   grantMatchesShare,
@@ -52,6 +55,7 @@ import {
   otpRequestSchema,
   otpVerifySchema,
   passwordSchema,
+  retentionSchema,
   roleChangeSchema,
   shareCreateSchema,
   uploadCreateSchema,
@@ -66,6 +70,7 @@ import {
 import {
   bumpRate,
   countOpens,
+  documentRetentionDays,
   deleteSessionByHash,
   findDocument,
   findGrant,
@@ -84,6 +89,7 @@ import {
   insertOutbox,
   insertSession,
   insertShare,
+  setDocumentRetentionDays,
   setMultipartId,
   insertUser,
   insertViewerSession,
@@ -212,6 +218,32 @@ export function createApp(deps: AppDeps) {
     return { share, document, version };
   }
 
+  async function openViewer(share: { id: string; expiresAt: number; passwordHash: string | null }, email: string): Promise<string> {
+    const now = clock.now();
+    const recipients = await shareRecipientsOf(db, share.id);
+    if (!recipients.includes(email)) {
+      await writeAudit(db, {
+        actorId: null,
+        actorEmail: email,
+        action: AUDIT.forward,
+        targetType: "share",
+        targetId: share.id,
+        metadata: {},
+        now,
+      });
+    }
+    const raw = bytesToBase64Url(randomBytes(32));
+    await insertViewerSession(db, {
+      shareId: share.id,
+      email,
+      tokenHash: await hmacHex(raw, config.sessionPepper),
+      passwordOk: share.passwordHash == null,
+      now,
+      expiresAt: viewerSessionExpiry(now, share.expiresAt),
+    });
+    return raw;
+  }
+
   async function issueStaff(email: string): Promise<string> {
     const now = clock.now();
     let user = await findUserByEmail(db, email);
@@ -311,6 +343,21 @@ export function createApp(deps: AppDeps) {
     } catch {
       return c.json({ error: "unauthorized" }, 401);
     }
+  });
+
+  app.get("/auth/s/:token", async (c) => {
+    if (config.authProvider !== "cloudflare-access" || !deps.verifyAccess) return c.json({ error: "not_found" }, 404);
+    const shareToken = c.req.param("token");
+    if (!shareToken) return c.json(hiddenBody(), 404);
+    const live = await liveShare(shareToken);
+    if (!live) return c.json(hiddenBody(), 404);
+    const jwt = c.req.header("cf-access-jwt-assertion");
+    const verified = jwt ? await deps.verifyAccess(jwt, "viewer") : null;
+    if (!verified) return c.json({ error: "unauthorized" }, 401);
+    const raw = await openViewer(live.share, verified.email);
+    const now = clock.now();
+    c.header("set-cookie", sessionCookie(VIEWER_COOKIE, raw, Math.floor((viewerSessionExpiry(now, live.share.expiresAt) - now) / 1000)));
+    return c.redirect(`${config.appOrigin}/s/${shareToken}`);
   });
 
   app.post("/api/uploads", async (c) => {
@@ -565,6 +612,7 @@ export function createApp(deps: AppDeps) {
       fileType: live.version.fileType,
       expiresAt: live.share.expiresAt,
       passwordRequired: live.share.passwordHash != null,
+      signIn: config.authProvider === "cloudflare-access" ? "access" : "otp",
     });
   });
 
@@ -604,27 +652,7 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: "invalid_code" }, 401);
     }
     await deleteOtp(db, challenge.id);
-    const recipients = await shareRecipientsOf(db, live.share.id);
-    if (!recipients.includes(parsed.data.email)) {
-      await writeAudit(db, {
-        actorId: null,
-        actorEmail: parsed.data.email,
-        action: AUDIT.forward,
-        targetType: "share",
-        targetId: live.share.id,
-        metadata: {},
-        now,
-      });
-    }
-    const raw = bytesToBase64Url(randomBytes(32));
-    await insertViewerSession(db, {
-      shareId: live.share.id,
-      email: parsed.data.email,
-      tokenHash: await hmacHex(raw, config.sessionPepper),
-      passwordOk: live.share.passwordHash == null,
-      now,
-      expiresAt: viewerSessionExpiry(now, live.share.expiresAt),
-    });
+    const raw = await openViewer(live.share, parsed.data.email);
     c.header("set-cookie", sessionCookie(VIEWER_COOKIE, raw, Math.floor((viewerSessionExpiry(now, live.share.expiresAt) - now) / 1000)));
     return c.json({ passwordRequired: live.share.passwordHash != null });
   });
@@ -634,6 +662,8 @@ export function createApp(deps: AppDeps) {
     const session = await requireViewer(c);
     if (!live || !session || session.shareId !== live.share.id) return c.json({ error: "unauthorized" }, 401);
     const parsed = passwordSchema.safeParse(await c.req.json().catch(() => null));
+    const attempts = await bumpRate(db, `share-password:${live.share.id}:${session.email}`, PASSWORD_WINDOW_MS, clock.now());
+    if (!rateAllows(attempts - 1, PASSWORD_ATTEMPT_LIMIT)) return c.json({ error: "invalid_password" }, 401);
     if (!parsed.success || !live.share.passwordHash || !(await verifyPassword(parsed.data.password, live.share.passwordHash))) {
       return c.json({ error: "invalid_password" }, 401);
     }
@@ -720,14 +750,40 @@ export function createApp(deps: AppDeps) {
       version != null &&
       grantMatchesShare(claims, { id: share.id, documentId: share.documentId, versionId: share.versionId, watermarkEnabled: share.watermarkEnabled }, { id: session.id, email: session.email });
     if (!allowed || !session || !version) return c.json(hiddenBody(), 404);
-    const decision = mode === "download" ? downloadDecision({ downloadAllowed: share.downloadAllowed, watermarkEnabled: share.watermarkEnabled, fileType: version.fileType as FileType, byteSize: version.byteSize }) : "allow";
+    const fileType = version.fileType as FileType;
+    const decision =
+      mode === "download"
+        ? downloadDecision({ downloadAllowed: share.downloadAllowed, watermarkEnabled: share.watermarkEnabled, fileType, byteSize: version.byteSize })
+        : viewDecision({ watermarkEnabled: share.watermarkEnabled, fileType, byteSize: version.byteSize });
     if (decision === "deny") return c.json({ error: "forbidden" }, 403);
     if (decision === "unstampable") return c.json({ error: "unstampable" }, 403);
     if (decision === "stamp") {
       const full = await storage.get(version.r2Key);
       if (!full) return c.json(hiddenBody(), 404);
+      let stamped: Uint8Array;
       try {
-        const stamped = await stampPdf(full.bytes, session.email);
+        stamped = await stampPdf(full.bytes, session.email);
+      } catch {
+        return c.json({ error: "unstampable" }, 403);
+      }
+      const filename = version.filename.replaceAll('"', "");
+      let offset = 0;
+      let status = 200;
+      let body = stamped;
+      if (mode === "view" && c.req.header("range")) {
+        const match = /^bytes=(\d+)-(\d*)$/.exec(c.req.header("range")?.trim() ?? "");
+        if (!match) return c.body(null, 416);
+        const start = Number(match[1]);
+        const end = match[2] ? Number(match[2]) : stamped.byteLength - 1;
+        if (!Number.isInteger(start) || start < 0 || start >= stamped.byteLength || end < start) return c.body(null, 416);
+        offset = start;
+        const length = Math.min(end, stamped.byteLength - 1) - start + 1;
+        body = stamped.slice(offset, offset + length);
+        status = 206;
+      }
+      if (mode === "view") {
+        await recordEvent(db, { shareId: share.id, sessionId: session.id, type: "open", page: null, now: clock.now() });
+      } else {
         await writeAudit(db, {
           actorId: null,
           actorEmail: session.email,
@@ -737,15 +793,15 @@ export function createApp(deps: AppDeps) {
           metadata: { watermark: true },
           now: clock.now(),
         });
-        return new Response(stamped, {
-          headers: {
-            "content-type": "application/pdf",
-            "content-disposition": `attachment; filename="${version.filename.replaceAll('"', "")}"`,
-          },
-        });
-      } catch {
-        return c.json({ error: "unstampable" }, 403);
       }
+      const headers = new Headers({
+        "content-type": "application/pdf",
+        "content-length": String(body.byteLength),
+        "accept-ranges": "bytes",
+        "content-disposition": `${mode === "download" ? "attachment" : "inline"}; filename="${filename}"`,
+      });
+      if (status === 206) headers.set("content-range", `bytes ${offset}-${offset + body.byteLength - 1}/${stamped.byteLength}`);
+      return new Response(body, { status, headers });
     }
     const probe = await storage.get(version.r2Key, { offset: 0, length: 1 });
     if (!probe) return c.json(hiddenBody(), 404);
@@ -787,6 +843,30 @@ export function createApp(deps: AppDeps) {
     if (status === 206) headers.set("content-range", `bytes ${offset}-${offset + slice.bytes.byteLength - 1}/${probe.size}`);
     return new Response(slice.bytes, { status, headers });
   }
+
+  app.get("/api/admin/retention", async (c) => {
+    const user = await requireAdmin(c);
+    if (user instanceof Response) return user;
+    return c.json({ days: await documentRetentionDays(db) });
+  });
+
+  app.patch("/api/admin/retention", async (c) => {
+    const user = await requireAdmin(c);
+    if (user instanceof Response) return user;
+    const parsed = retentionSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "invalid" }, 400);
+    await setDocumentRetentionDays(db, parsed.data.days);
+    await writeAudit(db, {
+      actorId: user.id,
+      actorEmail: user.email,
+      action: AUDIT.retention,
+      targetType: "retention",
+      targetId: "documents",
+      metadata: { days: parsed.data.days },
+      now: clock.now(),
+    });
+    return c.json({ days: parsed.data.days });
+  });
 
   app.get("/api/admin/users", async (c) => {
     const user = await requireAdmin(c);

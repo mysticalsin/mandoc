@@ -18,8 +18,8 @@ ManDoc holds staff documents and the email addresses of people who open them. Th
 | Use a grant after revoke or expiry | Every byte request re-reads the share and the grant row |
 | Forge a grant | HMAC-SHA256. A bad signature is `invalid_grant` and serves nothing |
 | Download when the sender said no | Server returns 403. The UI hiding the button is not the control |
-| Skip a watermark on a PDF download | The server stamps the email into the PDF. If stamping throws, the original is not sent |
-| Skip a watermark on an Office download | 403 `unstampable` |
+| Skip a watermark on a PDF view or download | The server stamps the email into the PDF. A range is taken from the stamped bytes. If stamping throws, the original is not sent |
+| Skip a watermark on an Office file | 403 `unstampable` on view and on download |
 | Change a role from a member session | `/api/admin/*` checks the user row on that request |
 | Read another member's document | 404, same as missing |
 | CSRF from another site | `X-Mandoc-Request` and a matching `Origin`, plus `SameSite=Lax` |
@@ -29,7 +29,7 @@ ManDoc holds staff documents and the email addresses of people who open them. Th
 
 ## Honest limits
 
-- The on-screen watermark is CSS. Someone who controls the page can hide it. The PDF they download, when download and watermark are both on, has the email in the file.
+- The on-screen watermark is also CSS. The bytes of a watermarked PDF already contain the email, including on the view route. Someone can still photograph the screen.
 - A screenshot or a camera is not stopped.
 - Office preview is text extraction. It is not a statement that the file is safe to open in another program.
 - Rate limits are best-effort counters in D1, not a global lock.

@@ -29,6 +29,10 @@ export const roleChangeSchema = z.object({
   disabled: z.boolean().optional(),
 });
 
+export const retentionSchema = z.object({
+  days: z.number().int().min(0).nullable(),
+});
+
 export const eventSchema = z.object({
   type: z.enum(["open", "page"]),
   page: z.number().int().positive().max(100_000).optional(),

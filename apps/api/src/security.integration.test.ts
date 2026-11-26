@@ -197,6 +197,7 @@ describe("document share security", () => {
     expect(viewed.status).toBe(200);
     expect(viewed.headers.get("content-type")).toBe("application/pdf");
     expect(viewed.text.startsWith("%PDF")).toBe(true);
+    expect(Buffer.from(viewed.bytes).equals(Buffer.from(pdf))).toBe(false);
     const downloaded = await call(`/api/download/${grant}`, { cookie: viewer });
     expect(downloaded.status).toBe(403);
     expect(downloaded.json).toEqual({ error: "forbidden" });
@@ -282,6 +283,7 @@ describe("document share security", () => {
     const officeSession = await call(`/api/public/s/${officeToken}/otp/verify`, { json: { email: "viewer@example.com", code: officeCode } });
     const officeViewer = viewerCookie(officeSession.headers.get("set-cookie"));
     const officeGrant = ((await call(`/api/public/s/${officeToken}/grant`, { cookie: officeViewer, json: {} })).json as { grant: string }).grant;
+    expect((await call(`/api/view/${officeGrant}`, { cookie: officeViewer })).json).toEqual({ error: "unstampable" });
     expect((await call(`/api/download/${officeGrant}`, { cookie: officeViewer })).json).toEqual({ error: "unstampable" });
   });
 

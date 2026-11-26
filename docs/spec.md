@@ -18,7 +18,7 @@ From a document, the member sets recipients, an expiry, an optional password, do
 
 ### Viewer
 
-The link shows the document title when it is live. The viewer enters an email and a code. A wrong code, an unknown link, a revoked link, and an expired link do not explain which failure happened: dead links all say not found, and a bad code always says the code is invalid or expired. If the share has a password, the grant waits until the password checks. The viewer then receives a grant that lasts 5 minutes. Each byte request checks the signature, the grant row, the viewer cookie, and that the share is still live.
+The link shows the document title when it is live. In production the viewer returns from Cloudflare Access at `GET /auth/s/<token>`, which checks the viewer audience and opens the viewer session. Locally the viewer enters an email and a code. A wrong code, an unknown link, a revoked link, and an expired link do not explain which failure happened: dead links all say not found, and a bad code always says the code is invalid or expired. If the share has a password, the grant waits until the password checks. The viewer then receives a grant that lasts 5 minutes. Each byte request checks the signature, the grant row, the viewer cookie, and that the share is still live.
 
 ### Opens, revoke, expiry
 
@@ -32,8 +32,8 @@ An admin lists users and can change another user's role or disable them. An admi
 
 | Type | Upload | View | Download |
 |---|---|---|---|
-| PDF | Yes | PDF.js, first page | Original, or stamped when the watermark is on |
-| DOCX, PPTX, XLSX | Yes | Text taken from the Office package | Original only when the watermark is off. Watermark on refuses the download |
+| PDF | Yes | PDF.js of the stamped bytes when the watermark is on | Stamped when the watermark is on. Refused when download is off |
+| DOCX, PPTX, XLSX | Yes | Text from the package when the watermark is off. Refused when it is on | Original only when the watermark is off |
 
 Layout-faithful Office rendering is not this slice.
 
@@ -42,5 +42,5 @@ Layout-faithful Office rendering is not this slice.
 - A model that summarises or classifies a document.
 - Entra ID.
 - Email invitations from a custom domain. The mailer stays disabled. The sender copies the link.
-- Burning the watermark into the bytes of a view (the view uses an overlay; the PDF download is stamped).
-- A document retention period. The job runs. It does not delete live documents until a period is set.
+- A watermark that cannot be removed from a screenshot.
+- A default document lifetime. The admin sets the number. Until then, live documents stay.

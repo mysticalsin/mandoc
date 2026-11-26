@@ -52,8 +52,12 @@ export function downloadDecision(input: {
   byteSize: number;
 }): DownloadDecision {
   if (!input.downloadAllowed) return "deny";
+  return viewDecision(input);
+}
+
+/** View never returns the original bytes when a watermark is required. */
+export function viewDecision(input: { watermarkEnabled: boolean; fileType: FileType; byteSize: number }): Exclude<DownloadDecision, "deny"> {
   if (!input.watermarkEnabled) return "allow";
-  if (input.fileType !== "pdf") return "unstampable";
-  if (input.byteSize > MAX_STAMP_BYTES) return "unstampable";
+  if (input.fileType !== "pdf" || input.byteSize > MAX_STAMP_BYTES) return "unstampable";
   return "stamp";
 }

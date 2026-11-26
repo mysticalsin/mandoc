@@ -48,6 +48,6 @@ Not done from this tree without an account.
 4. `npx wrangler secret put` for `SESSION_PEPPER`, `OTP_PEPPER`, `GRANT_SECRET`, `SHARE_LINK_KEY`, and `BOOTSTRAP_ADMIN_EMAIL`.
 5. `npx wrangler d1 migrations apply mandoc --remote`, then `npm run build` and `npx wrangler deploy` from `apps/api`.
 
-Production keeps `MAILER=disabled` and `AUTH_PROVIDER=cloudflare-access`. The document retention period stays unset until you write `retention_policies.days`.
+Production keeps `MAILER=disabled` and `AUTH_PROVIDER=cloudflare-access`. Viewers sign in through `GET /auth/s/<token>`. An admin sets the document lifetime on the users page. Until that number is set, live documents are not aged out.
 
 Do not merge to main without the gates in `CONTRIBUTING.md` and Tony WALTEUR's acceptance.

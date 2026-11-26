@@ -55,7 +55,7 @@ A retention period, an allowed email domain, or a permission the owner has not s
 - Staff and viewers authenticate before they see a document. Local development uses one-time codes in an outbox. Production uses Cloudflare Access and refuses the local code endpoints.
 - Unknown, revoked, and expired links return the same body.
 - Document bytes are never served from a raw storage URL. A view or download requires a short-lived signed grant, re-checked against the share on the server.
-- Download stays off unless the share says otherwise. A watermarked PDF download is stamped in the bytes. A watermarked Office download is refused until it can be stamped.
+- Download stays off unless the share says otherwise. A watermarked PDF, on view and on download, is stamped in the bytes. A watermarked Office file is refused until it can be stamped.
 - Roles are enforced on the server. A member does not gain admin by asking for it.
 - CSRF, session cookies, and the security headers in `docs/architecture.md` are on for every response.
 - Audit rows carry ids and action names. They do not carry secrets, codes, or tokens.
@@ -68,4 +68,6 @@ Tony WALTEUR is the authority for a merge to `main` and for a production deploy.
 
 Amendments are a new version in this file, with the date and the reason.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-26 | **Last Amended**: 2026-11-26
+**Version**: 1.0.1 | **Ratified**: 2026-11-26 | **Last Amended**: 2026-11-26
+
+1.0.1: A watermarked PDF is stamped on view as well as download. Production viewers sign in with Cloudflare Access. An admin can set the document lifetime the purge job already reads.

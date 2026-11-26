@@ -9,7 +9,7 @@ ManDoc is not claimed to be enterprise-ready by this repository. The controls be
 - Cloudflare Access for production sign-in. Local one-time codes exist only when `ENVIRONMENT` is `development` or `e2e`, and production refuses that mode.
 - Share lookup is a SHA-256. The raw token is sealed for the sender and is not a column used for lookup.
 - Grants are HMAC-SHA256, five minutes, checked again on the server for every read.
-- Download and watermark follow the share row, not the client.
+- Download and watermark follow the share row. A watermarked view is not the original file.
 - Sessions are HttpOnly Secure cookies. Admin routes read the role from D1.
 - Headers: CSP without script eval, frame denial, nosniff, no-referrer, COOP, HSTS on https.
 - CSRF on unsafe API methods.

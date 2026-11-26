@@ -6,6 +6,7 @@ import {
   csrfAllows,
   documentDue,
   downloadDecision,
+  viewDecision,
   expiryAllowed,
   generateOtpCode,
   grantMatchesShare,
@@ -161,6 +162,9 @@ describe("http and download gate", () => {
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: false, fileType: "docx", byteSize: 10 })).toBe("allow");
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pdf", byteSize: 10 })).toBe("stamp");
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pptx", byteSize: 10 })).toBe("unstampable");
+    expect(viewDecision({ watermarkEnabled: true, fileType: "pdf", byteSize: 10 })).toBe("stamp");
+    expect(viewDecision({ watermarkEnabled: true, fileType: "docx", byteSize: 10 })).toBe("unstampable");
+    expect(viewDecision({ watermarkEnabled: false, fileType: "pdf", byteSize: 10 })).toBe("allow");
   });
 });
 

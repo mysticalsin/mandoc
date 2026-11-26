@@ -1,6 +1,8 @@
 import { bytesToBase64Url, base64UrlToBytes, randomBytes, timingSafeEqual } from "./crypto.js";
 
 const ITERATIONS = 100_000;
+export const PASSWORD_ATTEMPT_LIMIT = 5;
+export const PASSWORD_WINDOW_MS = 15 * 60 * 1000;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);

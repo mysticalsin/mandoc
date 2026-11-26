@@ -131,6 +131,33 @@ async function main() {
   const foreign = await call(app, `/api/documents/${documentId}`, { cookie: beaCookie });
   record("cross-tenant document hidden", foreign.status === 404);
 
+  const production = parseConfig({
+    ENVIRONMENT: "production",
+    APP_ORIGIN: "https://mandoc.example",
+    MAILER: "disabled",
+    AUTH_PROVIDER: "cloudflare-access",
+    SESSION_PEPPER: "p",
+    OTP_PEPPER: "o",
+    GRANT_SECRET: "g",
+    SHARE_LINK_KEY: "s",
+    BOOTSTRAP_ADMIN_EMAIL: "ada@example.com",
+    ACCESS_TEAM_DOMAIN: "mantu.cloudflareaccess.com",
+    ACCESS_AUD_STAFF: "staff-aud",
+    ACCESS_AUD_VIEWER: "viewer-aud",
+  });
+  const prod = createApp({
+    db: database(),
+    storage: new MemoryStorage(),
+    config: production,
+    verifyAccess: (jwt, audience) => Promise.resolve(audience === "viewer" && jwt === "viewer-jwt" ? { email: "viewer@example.com" } : null),
+  });
+  const otpGone = await prod.request("https://mandoc.example/api/public/s/anything/otp/request", {
+    method: "POST",
+    headers: { "content-type": "application/json", [CSRF_HEADER]: "1", origin: "https://mandoc.example" },
+    body: JSON.stringify({ email: "viewer@example.com" }),
+  });
+  record("production viewer OTP is closed", otpGone.status === 404);
+
   const base = process.env.BASE_URL;
   if (base) {
     const live = await fetch(new URL("/api/health", base));

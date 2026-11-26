@@ -10,6 +10,7 @@ interface Landing {
   fileType: FileType;
   expiresAt: number;
   passwordRequired: boolean;
+  signIn: "access" | "otp";
 }
 
 interface GrantResponse {
@@ -42,6 +43,24 @@ export function ViewerPage() {
         setLanding(null);
       });
   }, [token]);
+
+  useEffect(() => {
+    if (!token || landing?.signIn !== "access") return;
+    let cancelled = false;
+    void api<GrantResponse>(`/api/public/s/${token}/grant`, { json: {} })
+      .then((body) => {
+        if (cancelled) return;
+        setGrant(body);
+        setStep("view");
+      })
+      .catch((caught: unknown) => {
+        if (cancelled) return;
+        if (caught instanceof ApiError && caught.code === "password_required") setStep("password");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [landing, token]);
 
   async function requestCode(event: FormEvent) {
     event.preventDefault();
@@ -99,7 +118,12 @@ export function ViewerPage() {
     <main className="mx-auto min-h-screen max-w-5xl px-4 py-6">
       <h1 className="mb-4 text-2xl">{step === "view" && grant ? grant.filename : landing.title}</h1>
       {error ? <p className="mb-3 text-sm text-[#7a2e2e]">{error}</p> : null}
-      {step === "email" ? (
+      {step === "email" && landing.signIn === "access" ? (
+        <Button asChild>
+          <a href={`/auth/s/${token}`}>Continue</a>
+        </Button>
+      ) : null}
+      {step === "email" && landing.signIn !== "access" ? (
         <form className="max-w-sm space-y-3" onSubmit={(event) => void requestCode(event)}>
           <label className="block text-sm">
             Email

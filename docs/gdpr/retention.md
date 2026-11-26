@@ -15,7 +15,7 @@ The cron is `0 3 * * *` UTC. `runRetention` in `apps/api/src/retention-job.ts`:
 - Documents a person has already deleted, including their bytes, shares, and events.
 - Live documents only when `retention_policies.days` for scope `documents` is a number, and the document is older than that many days.
 
-The seeded policy has `days` null. Null means the owner has not chosen a lifetime. The job must not invent one. Setting the number is an admin action that is not in the UI yet. Tests set it explicitly.
+The seeded policy has `days` null. Null means the owner has not chosen a lifetime. The job must not invent one. An admin sets it with `PATCH /api/admin/retention` or the Days field on the users page. The next run then deletes live documents older than that many days.
 
 Each run writes one `retention.run` audit row with counts. The row does not include emails or tokens.
 

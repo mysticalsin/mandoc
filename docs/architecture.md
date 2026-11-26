@@ -57,7 +57,7 @@ Dropped, and what replaces them:
 | Dropped | Replacement |
 |---|---|
 | HLS, hls.js, segment grants | PDF.js for PDF. Office files are OOXML text, not video |
-| Watermark burned into a video frame | CSS overlay on the view. PDF download is stamped with pdf-lib. Office download with a watermark is refused |
+| Watermark burned into a video frame | PDF view and download are stamped with pdf-lib. Office bytes are refused while a watermark is on |
 | Media container, ffmpeg, Durable Object | Nothing. The worker stores the original bytes |
 | Whisper, Workers AI, Vectorize, transcript search | Nothing. No model |
 | Customer detection and publish review | A document is readable when the upload completes |
@@ -69,9 +69,9 @@ Dropped, and what replaces them:
 - Office preview reads text out of the zip. It is not a layout preview. Conversion to PDF is not in this slice.
 - Copy-link only. `MAILER=disabled` in production. Local dev uses `dev-outbox`.
 - View is the default. Download and watermark are off until the sender turns them on.
-- Watermark on a PDF download is stamped in the file, up to 32 MiB. Larger PDFs and all Office files fail the download closed when a watermark is required. The on-screen watermark is an overlay tied to the grant. A determined client can hide CSS. Screen capture is not prevented.
+- Watermark on means the view and the download are a stamped PDF, up to 32 MiB. The server does not return the original bytes. Larger PDFs and Office files fail closed. The page also draws the email as an overlay. Screen capture is not prevented.
 - Share expiry must sit between 5 minutes and 366 days. That cap is a safety limit, not a retention period.
-- Document retention days stay null. The purge job deletes expired codes, sessions, grants, abandoned uploads older than a day, and documents already deleted by a person. It does not age out live documents.
+- Document retention days start null, so a new deploy does not age out live files. An admin sets the number at `PATCH /api/admin/retention`. The purge job then deletes live documents older than that many days, and it always deletes soft-deleted documents, expired sessions, and abandoned uploads.
 - New staff are members. There is no domain allowlist until one is set. Production Access is the gate in front of the worker.
 - A viewer who was not on the recipient list can still verify. That open is audited as `share.forward`.
 - Password policy is 8 to 200 characters, PBKDF2-SHA-256, 100,000 iterations.

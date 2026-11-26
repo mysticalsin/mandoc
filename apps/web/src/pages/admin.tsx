@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../components/ui/button.js";
+import { Input } from "../components/ui/input.js";
 import { api } from "../lib/api.js";
 
 interface UserRow {
@@ -29,14 +30,24 @@ interface AuditRow {
 
 export function UsersPage() {
   const [users, setUsers] = useState<UserRow[] | null>(null);
+  const [days, setDays] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
     try {
       setUsers((await api<{ users: UserRow[] }>("/api/admin/users")).users);
+      const policy = await api<{ days: number | null }>("/api/admin/retention");
+      setDays(policy.days == null ? "" : String(policy.days));
     } catch {
       setError("Not found");
     }
+  }
+
+  async function saveRetention(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = days.trim();
+    await api("/api/admin/retention", { method: "PATCH", json: { days: trimmed === "" ? null : Number(trimmed) } });
+    await load();
   }
 
   useEffect(() => {
@@ -49,6 +60,13 @@ export function UsersPage() {
   return (
     <main>
       <h1 className="mb-4 text-2xl">Users</h1>
+      <form className="mb-6 flex max-w-xs items-end gap-2" onSubmit={(event) => void saveRetention(event)}>
+        <label className="block flex-1 text-sm">
+          Days
+          <Input className="mt-1" inputMode="numeric" value={days} onChange={(event) => setDays(event.target.value)} />
+        </label>
+        <Button type="submit">Save</Button>
+      </form>
       <ul className="divide-y divide-[#d9d3c7] border-y border-[#d9d3c7]">
         {users.map((user) => (
           <li key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
