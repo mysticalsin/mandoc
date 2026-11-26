@@ -1,0 +1,28 @@
+{
+  "name": "@mandoc/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "wrangler dev --env dev --port 8791 --ip 127.0.0.1",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mandoc/cf": "0.1.0",
+    "@mandoc/core": "0.1.0",
+    "@mandoc/db": "0.1.0",
+    "hono": "^4.10.4",
+    "jose": "^6.1.0",
+    "pdf-lib": "^1.17.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251120.0",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.50.0"
+  }
+}

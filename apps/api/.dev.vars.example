@@ -1,0 +1,7 @@
+# Local placeholders only. `npm run dev` writes apps/api/.dev.vars with random values when it is missing.
+# Production values are `wrangler secret put` and never committed.
+SESSION_PEPPER=
+OTP_PEPPER=
+GRANT_SECRET=
+SHARE_LINK_KEY=
+BOOTSTRAP_ADMIN_EMAIL=ada@example.com

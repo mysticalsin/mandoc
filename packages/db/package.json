@@ -1,0 +1,21 @@
+{
+  "name": "@mandoc/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mandoc/core": "0.1.0",
+    "drizzle-orm": "^0.44.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "vitest": "^3.2.4"
+  }
+}

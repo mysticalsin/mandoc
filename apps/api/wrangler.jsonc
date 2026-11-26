@@ -1,0 +1,71 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mandoc",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  // EU jurisdiction for the remote D1 database and R2 bucket. The ids below are placeholders.
+  // Create them with `wrangler d1 create mandoc --jurisdiction eu` and `wrangler r2 bucket create mandoc-documents --jurisdiction eu`,
+  // then replace database_id. Secrets are never listed here: `wrangler secret put SESSION_PEPPER` and the rest named in .dev.vars.example.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mandoc",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "jurisdiction": "eu",
+      "migrations_dir": "../../packages/db/migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "mandoc-documents", "jurisdiction": "eu" }],
+  "workflows": [
+    {
+      "name": "mandoc-retention",
+      "binding": "RETENTION",
+      "class_name": "RetentionWorkflow"
+    }
+  ],
+  "triggers": { "crons": ["0 3 * * *"] },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_ORIGIN": "https://mandoc.example.workers.dev",
+    "MAILER": "disabled",
+    "AUTH_PROVIDER": "cloudflare-access",
+    "GRANT_TTL_SECONDS": "300",
+    "ACCESS_TEAM_DOMAIN": "example.cloudflareaccess.com",
+    "ACCESS_AUD_STAFF": "replace-with-access-aud",
+    "ACCESS_AUD_VIEWER": "replace-with-access-aud"
+  },
+  "env": {
+    "dev": {
+      "assets": {
+        "directory": "../web/dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": true
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mandoc-dev",
+          "database_id": "00000000-0000-0000-0000-000000000001",
+          "migrations_dir": "../../packages/db/migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "mandoc-documents-dev" }],
+      "triggers": { "crons": [] },
+      "vars": {
+        "ENVIRONMENT": "development",
+        "APP_ORIGIN": "http://127.0.0.1:8791",
+        "MAILER": "dev-outbox",
+        "AUTH_PROVIDER": "otp",
+        "GRANT_TTL_SECONDS": "300"
+      }
+    }
+  }
+}

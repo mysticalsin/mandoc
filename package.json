@@ -1,0 +1,30 @@
+{
+  "name": "mandoc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ManDoc: secure document library and tracked share links for Mantu staff.",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p e2e && tsc --noEmit -p scripts",
+    "test": "npm run test --workspaces --if-present && node --experimental-strip-types scripts/security/static-check.ts",
+    "build": "npm run build -w @mandoc/web",
+    "dev": "node scripts/ensure-dev-vars.mjs && npm run build -w @mandoc/web && npm exec -w @mandoc/api -- wrangler d1 migrations apply mandoc-dev --local --env dev && npm run dev -w @mandoc/api",
+    "e2e": "node scripts/ensure-dev-vars.mjs && playwright test",
+    "security:attack": "tsx scripts/security/attack.ts",
+    "security:static": "node --experimental-strip-types scripts/security/static-check.ts",
+    "security:semgrep": "semgrep scan --config .semgrep.yml --error --quiet"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^22.19.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
