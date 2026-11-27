@@ -18,6 +18,8 @@ import {
   PASSWORD_ATTEMPT_LIMIT,
   PASSWORD_WINDOW_MS,
   downloadDecision,
+  MAX_PREVIEW_BYTES,
+  previewOffice,
   viewDecision,
   expiryAllowed,
   generateOtpCode,
@@ -757,6 +759,21 @@ export function createApp(deps: AppDeps) {
         : viewDecision({ watermarkEnabled: share.watermarkEnabled, fileType, byteSize: version.byteSize });
     if (decision === "deny") return c.json({ error: "forbidden" }, 403);
     if (decision === "unstampable") return c.json({ error: "unstampable" }, 403);
+    if (decision === "preview") {
+      if (version.byteSize > MAX_PREVIEW_BYTES) return c.json({ error: "unstampable" }, 403);
+      const full = await storage.get(version.r2Key);
+      if (!full) return c.json(hiddenBody(), 404);
+      if (full.bytes.byteLength > MAX_PREVIEW_BYTES) return c.json({ error: "unstampable" }, 403);
+      let preview: ReturnType<typeof previewOffice>;
+      try {
+        preview = previewOffice(full.bytes, fileType);
+      } catch {
+        return c.json({ error: "unstampable" }, 403);
+      }
+      if (!preview) return c.json({ error: "unstampable" }, 403);
+      await recordEvent(db, { shareId: share.id, sessionId: session.id, type: "open", page: null, now: clock.now() });
+      return c.json(preview);
+    }
     if (decision === "stamp") {
       const full = await storage.get(version.r2Key);
       if (!full) return c.json(hiddenBody(), 404);

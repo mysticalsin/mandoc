@@ -5,6 +5,7 @@ import { CSRF_HEADER, STAFF_COOKIE, VIEWER_COOKIE, cookieValue, shareTokenHash }
 import { MemoryStorage } from "@mandoc/cf";
 import { createDb, findShareByHash, setDocumentRetentionDays, type Db } from "@mandoc/db";
 import { openTestDatabase } from "../../../packages/db/src/node-d1.ts";
+import { strToU8, zipSync } from "fflate";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
@@ -119,6 +120,30 @@ describe("document share security", () => {
     const done = await call(`/api/uploads/${uploadId}/complete`, { cookie, json: {} });
     expect(done.status).toBe(200);
     return (done.json as { documentId: string }).documentId;
+  }
+
+  async function grantFor(
+    cookie: string,
+    documentId: string,
+    flags: { downloadAllowed: boolean; watermarkEnabled: boolean },
+    email: string,
+  ) {
+    const created = await call(`/api/documents/${documentId}/shares`, {
+      cookie,
+      json: { recipientEmails: [email], expiresAt: now + 3_600_000, ...flags },
+    });
+    expect(created.status).toBe(201);
+    const token = (created.json as { url: string }).url.split("/s/")[1] ?? "";
+    await call(`/api/public/s/${token}/otp/request`, { json: { email } });
+    const box = await call("/api/dev/outbox");
+    const code = (box.json as { messages: { code: string; email: string; kind: string }[] }).messages.find(
+      (message) => message.kind === "viewer_otp" && message.email === email,
+    )?.code;
+    const session = await call(`/api/public/s/${token}/otp/verify`, { json: { email, code } });
+    const viewer = viewerCookie(session.headers.get("set-cookie"));
+    const granted = await call(`/api/public/s/${token}/grant`, { cookie: viewer, json: {} });
+    expect(granted.status).toBe(200);
+    return { viewer, grant: (granted.json as { grant: string }).grant };
   }
 
   it("checks security headers and rejects CSRF", async () => {
@@ -283,8 +308,63 @@ describe("document share security", () => {
     const officeSession = await call(`/api/public/s/${officeToken}/otp/verify`, { json: { email: "viewer@example.com", code: officeCode } });
     const officeViewer = viewerCookie(officeSession.headers.get("set-cookie"));
     const officeGrant = ((await call(`/api/public/s/${officeToken}/grant`, { cookie: officeViewer, json: {} })).json as { grant: string }).grant;
-    expect((await call(`/api/view/${officeGrant}`, { cookie: officeViewer })).json).toEqual({ error: "unstampable" });
-    expect((await call(`/api/download/${officeGrant}`, { cookie: officeViewer })).json).toEqual({ error: "unstampable" });
+    const officeView = await call(`/api/view/${officeGrant}`, { cookie: officeViewer });
+    expect(officeView.status).toBe(403);
+    expect(officeView.json).toEqual({ error: "unstampable" });
+    expect(Buffer.from(officeView.bytes).equals(Buffer.from(docx))).toBe(false);
+    const officeDownload = await call(`/api/download/${officeGrant}`, { cookie: officeViewer });
+    expect(officeDownload.status).toBe(403);
+    expect(officeDownload.json).toEqual({ error: "unstampable" });
+    expect(Buffer.from(officeDownload.bytes).equals(Buffer.from(docx))).toBe(false);
+  });
+
+  it("previews office files in the browser without sending the package", async () => {
+    const ada = await signIn("ada@example.com");
+    const docx = zipSync({ "word/document.xml": strToU8("<w:document><w:p><w:t>Quarterly note</w:t></w:p></w:document>") });
+    const pptx = zipSync({ "ppt/slides/slide1.xml": strToU8("<p:sld><a:t>Board slide</a:t></p:sld>") });
+    const xlsx = zipSync({
+      "xl/sharedStrings.xml": strToU8("<sst><si><t>Revenue</t></si></sst>"),
+      "xl/worksheets/sheet1.xml": strToU8('<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>12</v></c></row></sheetData>'),
+    });
+    const files = [
+      { bytes: docx, filename: "brief.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", kind: "docx", text: "Quarterly note" },
+      { bytes: pptx, filename: "deck.pptx", contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", kind: "pptx", text: "Board slide" },
+      { bytes: xlsx, filename: "figures.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", kind: "xlsx", text: "Revenue" },
+    ];
+    for (const file of files) {
+      const documentId = await upload(ada, file.bytes, file.filename, file.contentType);
+      const opened = await grantFor(ada, documentId, { downloadAllowed: false, watermarkEnabled: false }, `${file.kind}@example.com`);
+      const viewed = await call(`/api/view/${opened.grant}`, { cookie: opened.viewer });
+      expect(viewed.status).toBe(200);
+      expect(viewed.headers.get("content-type")).toContain("application/json");
+      expect(viewed.text).toContain(file.text);
+      expect(viewed.text).not.toContain("word/document.xml");
+      expect(viewed.text).not.toContain("ppt/slides");
+      expect(Buffer.from(viewed.bytes.subarray(0, 2)).toString()).not.toBe("PK");
+      expect(Buffer.from(viewed.bytes).equals(Buffer.from(file.bytes))).toBe(false);
+      expect((viewed.json as { kind: string }).kind).toBe(file.kind);
+      const downloaded = await call(`/api/download/${opened.grant}`, { cookie: opened.viewer });
+      expect(downloaded.status).toBe(403);
+      expect(downloaded.json).toEqual({ error: "forbidden" });
+      expect(Buffer.from(downloaded.bytes).equals(Buffer.from(file.bytes))).toBe(false);
+    }
+
+    const documentId = await upload(ada, docx, "brief-copy.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const allowed = await grantFor(ada, documentId, { downloadAllowed: true, watermarkEnabled: false }, "download@example.com");
+    const original = await call(`/api/download/${allowed.grant}`, { cookie: allowed.viewer });
+    expect(original.status).toBe(200);
+    expect(Buffer.from(original.bytes).equals(Buffer.from(docx))).toBe(true);
+    const stillPreview = await call(`/api/view/${allowed.grant}`, { cookie: allowed.viewer });
+    expect(stillPreview.headers.get("content-type")).toContain("application/json");
+    expect(Buffer.from(stillPreview.bytes).equals(Buffer.from(docx))).toBe(false);
+
+    const junk = new TextEncoder().encode("not really a docx");
+    const brokenId = await upload(ada, junk, "broken.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const broken = await grantFor(ada, brokenId, { downloadAllowed: true, watermarkEnabled: false }, "broken@example.com");
+    const refused = await call(`/api/view/${broken.grant}`, { cookie: broken.viewer });
+    expect(refused.status).toBe(403);
+    expect(refused.json).toEqual({ error: "unstampable" });
+    expect(Buffer.from(refused.bytes).equals(Buffer.from(junk))).toBe(false);
   });
 
   it("purges deleted documents and leaves an unset lifetime alone", async () => {

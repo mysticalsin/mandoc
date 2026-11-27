@@ -33,7 +33,7 @@ An admin lists users and can change another user's role or disable them. An admi
 | Type | Upload | View | Download |
 |---|---|---|---|
 | PDF | Yes | PDF.js of the stamped bytes when the watermark is on | Stamped when the watermark is on. Refused when download is off |
-| DOCX, PPTX, XLSX | Yes | Text from the package when the watermark is off. Refused when it is on | Original only when the watermark is off |
+| DOCX, PPTX, XLSX | Yes | In-browser text from the worker when the watermark is off. The response is not the package. Refused when the watermark is on | Original only when download is on and the watermark is off |
 
 Layout-faithful Office rendering is not this slice.
 

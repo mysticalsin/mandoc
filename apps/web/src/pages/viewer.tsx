@@ -1,4 +1,4 @@
-import { previewOffice, type FileType } from "@mandoc/core";
+import { type FileType, type OfficePreview } from "@mandoc/core";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useParams } from "react-router";
 import { Button } from "../components/ui/button.js";
@@ -155,18 +155,65 @@ export function ViewerPage() {
   );
 }
 
+function OfficeView({ preview }: { preview: OfficePreview | null }) {
+  if (!preview) return null;
+  if (preview.kind === "xlsx") {
+    if (preview.rows.length === 0) return <p className="p-4 text-sm">No preview</p>;
+    return (
+      <div className="overflow-auto p-4">
+        <table className="w-full border-collapse text-left text-sm">
+          <tbody>
+            {preview.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex} className="border border-[#d9d3c7] px-2 py-1">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (preview.kind === "pptx") {
+    if (preview.slides.length === 0) return <p className="p-4 text-sm">No preview</p>;
+    return (
+      <div className="space-y-4 p-4">
+        {preview.slides.map((slide, index) => (
+          <section key={index} className="rounded-md border border-[#d9d3c7] p-4">
+            <h2 className="mb-2 text-sm text-[#5c564e]">Slide {index + 1}</h2>
+            <p className="whitespace-pre-wrap text-sm">{slide || " "}</p>
+          </section>
+        ))}
+      </div>
+    );
+  }
+  if (preview.paragraphs.length === 0) return <p className="p-4 text-sm">No preview</p>;
+  return (
+    <div className="space-y-3 p-4">
+      {preview.paragraphs.map((paragraph, index) => (
+        <p key={index} className="text-sm">
+          {paragraph}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function DocumentView({ grant }: { grant: GrantResponse }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [text, setText] = useState("");
+  const [office, setOffice] = useState<OfficePreview | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const file = await apiBytes(`/api/view/${encodeURIComponent(grant.grant)}`);
-        if (cancelled) return;
         if (grant.fileType === "pdf") {
+          const file = await apiBytes(`/api/view/${encodeURIComponent(grant.grant)}`);
+          if (cancelled) return;
           const pdfjs = await import("pdfjs-dist");
           pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
           const doc = await pdfjs.getDocument({ data: file.bytes.slice() }).promise;
@@ -179,10 +226,10 @@ function DocumentView({ grant }: { grant: GrantResponse }) {
           const context = target.getContext("2d");
           if (!context) return;
           await page.render({ canvas: target, canvasContext: context, viewport }).promise;
-        } else {
-          const preview = previewOffice(file.bytes, grant.fileType);
-          setText(preview?.text || "No preview");
+          return;
         }
+        const preview = await api<OfficePreview>(`/api/view/${encodeURIComponent(grant.grant)}`);
+        if (!cancelled) setOffice(preview);
       } catch (caught) {
         if (caught instanceof ApiError && caught.code === "not_found") setError("Not found");
         else setError("Could not open");
@@ -209,7 +256,7 @@ function DocumentView({ grant }: { grant: GrantResponse }) {
   return (
     <section className="relative overflow-hidden rounded-md border border-[#d9d3c7] bg-white">
       {error ? <p className="p-4">{error}</p> : null}
-      {grant.fileType === "pdf" ? <canvas ref={canvas} className="max-w-full" /> : <pre className="whitespace-pre-wrap p-4 text-sm">{text}</pre>}
+      {grant.fileType === "pdf" ? <canvas ref={canvas} className="max-w-full" /> : <OfficeView preview={office} />}
       {grant.watermark ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col justify-around overflow-hidden" aria-hidden="true">
           {Array.from({ length: 8 }, (_, index) => (
