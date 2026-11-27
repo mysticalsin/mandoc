@@ -31,7 +31,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install semgrep
+      - id: cache-semgrep
+        uses: actions/cache@v5
+        with:
+          path: ~/.local
+          key: semgrep-1.160.0-${{ runner.os }}
+      - if: steps.cache-semgrep.outputs.cache-hit != 'true'
+        run: pip install --user semgrep==1.160.0
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: npm run security:semgrep
 
   e2e:
