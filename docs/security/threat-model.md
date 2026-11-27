@@ -19,7 +19,8 @@ ManDoc holds staff documents and the email addresses of people who open them. Th
 | Forge a grant | HMAC-SHA256. A bad signature is `invalid_grant` and serves nothing |
 | Download when the sender said no | Server returns 403. The UI hiding the button is not the control. An Office view is a text preview, not the file |
 | Skip a watermark on a PDF view or download | The server stamps the email into the PDF. A range is taken from the stamped bytes. If stamping throws, the original is not sent |
-| Skip a watermark on an Office file | 403 `unstampable` on view and on download. The body is not the package |
+| Skip a watermark on an Office file | The server rewrites the package with the viewer email. View returns text from that package, not the package. Download returns the stamped package. If it cannot be stamped, view and download return 403 `unstampable` |
+| Skip a watermark on a PDF above 32 MiB | The server appends an incremental stamp. The original bytes stay the prefix. If the PDF cannot be parsed, the response is 403 `unstampable` |
 | Change a role from a member session | `/api/admin/*` checks the user row on that request |
 | Read another member's document | 404, same as missing |
 | CSRF from another site | `X-Mandoc-Request` and a matching `Origin`, plus `SameSite=Lax` |

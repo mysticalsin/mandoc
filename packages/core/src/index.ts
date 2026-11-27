@@ -12,5 +12,8 @@ export * from "./files.js";
 export * from "./retention.js";
 export * from "./audit.js";
 export * from "./office-preview.js";
+export * from "./office-stamp.js";
+export * from "./pdf-stamp.js";
+export * from "./staff-domains.js";
 export * from "./schemas.js";
 export * from "./ports.js";

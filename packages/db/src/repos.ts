@@ -22,6 +22,7 @@ import {
   rateLimits,
   retentionPolicies,
   sessions,
+  staffDomains,
   shareRecipients,
   shares,
   uploads,
@@ -463,9 +464,31 @@ export async function writeAudit(
   });
 }
 
+function auditRows(rows: { id: string; actorId: string | null; actorEmail: string | null; action: string; targetType: string; targetId: string | null; metadata: string; createdAt: number }[]) {
+  return rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata) as AuditMetadata }));
+}
+
 export async function listAudit(db: Db, limit = 200) {
   const rows = await db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit);
-  return rows.map((row) => ({ ...row, metadata: JSON.parse(row.metadata) as AuditMetadata }));
+  return auditRows(rows);
+}
+
+export async function listAuditExport(db: Db) {
+  const rows = await db.select().from(auditLog).orderBy(auditLog.createdAt);
+  return auditRows(rows);
+}
+
+/** `null` is an unset allowlist. An empty table is unset, not a deny-all. */
+export async function listStaffDomains(db: Db): Promise<string[] | null> {
+  const rows = await db.select().from(staffDomains).orderBy(staffDomains.domain);
+  if (rows.length === 0) return null;
+  return rows.map((row) => row.domain);
+}
+
+export async function replaceStaffDomains(db: Db, domains: readonly string[]): Promise<void> {
+  await db.delete(staffDomains);
+  if (domains.length === 0) return;
+  await db.insert(staffDomains).values(domains.map((domain) => ({ domain })));
 }
 
 export async function insertOutbox(db: Db, input: { kind: string; email: string; code: string; shareId: string | null; now: number }): Promise<void> {

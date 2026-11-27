@@ -1,11 +1,9 @@
-import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
-import { fileURLToPath } from "node:url";
 import { CSRF_HEADER, STAFF_COOKIE, VIEWER_COOKIE, cookieValue, shareTokenHash } from "@mandoc/core";
 import { MemoryStorage } from "@mandoc/cf";
 import { createDb, findShareByHash, setDocumentRetentionDays, type Db } from "@mandoc/db";
-import { openTestDatabase } from "../../../packages/db/src/node-d1.ts";
-import { strToU8, zipSync } from "fflate";
+import { migrationSql, openTestDatabase } from "../../../packages/db/src/node-d1.ts";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
@@ -15,8 +13,7 @@ import { runRetention } from "./retention-job.js";
 const origin = "http://127.0.0.1:8791";
 
 function testDb(): Db {
-  const sql = readFileSync(fileURLToPath(new URL("../../../packages/db/migrations/0001_init.sql", import.meta.url)), "utf8");
-  return createDb(openTestDatabase(sql) as D1Database);
+  return createDb(openTestDatabase(migrationSql()) as D1Database);
 }
 
 const config: AppConfig = {
@@ -365,6 +362,53 @@ describe("document share security", () => {
     expect(refused.status).toBe(403);
     expect(refused.json).toEqual({ error: "unstampable" });
     expect(Buffer.from(refused.bytes).equals(Buffer.from(junk))).toBe(false);
+  });
+
+  it("stamps a watermarked office file and still previews text", async () => {
+    const ada = await signIn("ada@example.com");
+    const note = zipSync({
+      "word/document.xml": strToU8(
+        `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Quarterly note</w:t></w:r></w:p></w:body></w:document>`,
+      ),
+    });
+    const documentId = await upload(ada, note, "note.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const opened = await grantFor(ada, documentId, { downloadAllowed: true, watermarkEnabled: true }, "viewer@example.com");
+    const viewed = await call(`/api/view/${opened.grant}`, { cookie: opened.viewer });
+    expect(viewed.status).toBe(200);
+    expect(viewed.headers.get("content-type")).toContain("application/json");
+    expect(viewed.text).toContain("Quarterly note");
+    expect(viewed.text).toContain("viewer@example.com");
+    expect(Buffer.from(viewed.bytes.subarray(0, 2)).toString()).not.toBe("PK");
+    const downloaded = await call(`/api/download/${opened.grant}`, { cookie: opened.viewer });
+    expect(downloaded.status).toBe(200);
+    expect(downloaded.headers.get("content-type")).toContain("wordprocessingml");
+    expect(Buffer.from(downloaded.bytes).equals(Buffer.from(note))).toBe(false);
+    const packed = unzipSync(downloaded.bytes);
+    expect(strFromU8(packed["word/document.xml"] ?? new Uint8Array())).toContain("viewer@example.com");
+  });
+
+  it("exports the audit log and applies a staff domain allowlist only after it is set", async () => {
+    const ada = await signIn("ada@example.com");
+    expect((await call("/api/admin/domains", { cookie: ada })).json).toEqual({ domains: null });
+    const saved = await call("/api/admin/domains", { method: "PATCH", cookie: ada, json: { domains: ["Example.com"] } });
+    expect(saved.status).toBe(200);
+    expect(saved.json).toEqual({ domains: ["example.com"] });
+    const blocked = await call("/api/auth/otp/request", { json: { email: "bea@elsewhere.test" } });
+    expect(blocked.status).toBe(202);
+    const outbox = await call("/api/dev/outbox");
+    const messages = (outbox.json as { messages: { email: string; kind: string }[] }).messages;
+    expect(messages.some((message) => message.email === "bea@elsewhere.test" && message.kind === "staff_otp")).toBe(false);
+    const member = await signIn("bea@example.com");
+    expect((await call("/api/admin/domains", { method: "PATCH", cookie: member, json: { domains: null } })).status).toBe(403);
+    const exported = await call("/api/admin/audit/export", { cookie: ada });
+    expect(exported.status).toBe(200);
+    expect(exported.headers.get("content-type")).toContain("text/csv");
+    expect(exported.headers.get("content-disposition")).toContain("audit.csv");
+    expect(exported.text).toContain("user.sign_in");
+    expect(exported.text).toContain("staff.domains");
+    expect((await call("/api/admin/audit/export", { cookie: member })).status).toBe(403);
+    expect((await call("/api/admin/domains", { method: "PATCH", cookie: ada, json: { domains: null } })).json).toEqual({ domains: null });
+    await signIn("bea@elsewhere.test");
   });
 
   it("purges deleted documents and leaves an unset lifetime alone", async () => {

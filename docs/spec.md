@@ -26,16 +26,16 @@ The first successful view writes one open for that viewer session. The sender se
 
 ### Admin
 
-An admin lists users and can change another user's role or disable them. An admin cannot change their own row, and cannot remove the last active admin. An admin lists every share and can revoke one. An admin reads the audit log.
+An admin lists users and can change another user's role or disable them. An admin cannot change their own row, and cannot remove the last active admin. An admin lists every share and can revoke one. An admin reads the audit log and can download it as CSV. An admin can set the email domains allowed to sign in as staff. Until that list is saved, any address can request a staff code. An empty save clears the list. It does not become a deny-all.
 
 ## File types
 
 | Type | Upload | View | Download |
 |---|---|---|---|
 | PDF | Yes | PDF.js of the stamped bytes when the watermark is on | Stamped when the watermark is on. Refused when download is off |
-| DOCX, PPTX, XLSX | Yes | In-browser text from the worker when the watermark is off. The response is not the package. Refused when the watermark is on | Original only when download is on and the watermark is off |
+| DOCX, PPTX, XLSX | Yes | In-browser text from the worker. The response is not the package. When the watermark is on, the text is taken from the stamped package | Stamped when the watermark is on. Original when download is on and the watermark is off. Refused when download is off |
 
-Layout-faithful Office rendering is not this slice.
+Layout-faithful Office rendering is not this slice. A PDF larger than 32 MiB is stamped by appending an incremental update. The original streams stay in the file. A package or PDF that cannot be stamped is refused.
 
 ## Out of scope
 

@@ -57,7 +57,7 @@ Dropped, and what replaces them:
 | Dropped | Replacement |
 |---|---|
 | HLS, hls.js, segment grants | PDF.js for PDF. Office view is text rendered in the browser, not the package |
-| Watermark burned into a video frame | PDF view and download are stamped with pdf-lib. Office bytes are refused while a watermark is on |
+| Watermark burned into a video frame | PDF view and download are stamped. Office packages are rewritten. A file that cannot be stamped is refused |
 | Media container, ffmpeg, Durable Object | Nothing. The worker stores the original bytes |
 | Whisper, Workers AI, Vectorize, transcript search | Nothing. No model |
 | Customer detection and publish review | A document is readable when the upload completes |
@@ -69,10 +69,10 @@ Dropped, and what replaces them:
 - Office preview reads text out of the zip in the worker. The browser renders paragraphs, slides, or a sheet. The view response is JSON, not the package and not a storage URL. It is not a layout preview. Conversion to PDF is not in this slice.
 - Copy-link only. `MAILER=disabled` in production. Local dev uses `dev-outbox`.
 - View is the default. Download and watermark are off until the sender turns them on.
-- Watermark on means a PDF view and download are stamped, up to 32 MiB. The server does not return the original bytes. Larger PDFs fail closed. Office files with a watermark fail closed on view and on download. An Office view without a watermark is a text preview up to 32 MiB, still not the package. The page also draws the email as an overlay on a PDF. Screen capture is not prevented.
+- Watermark on means the served bytes are stamped. The server does not return the original. PDFs up to 32 MiB are rewritten with pdf-lib. Larger PDFs get an incremental update that leaves the original streams in place. Office files are rewritten in the package. An Office view is still the text preview, taken from the stamped package when the watermark is on, and it is not the package. If stamping fails, the response is 403 `unstampable`. The page also draws the email as an overlay on a PDF. Screen capture is not prevented.
 - Share expiry must sit between 5 minutes and 366 days. That cap is a safety limit, not a retention period.
 - Document retention days start null, so a new deploy does not age out live files. An admin sets the number at `PATCH /api/admin/retention`. The purge job then deletes live documents older than that many days, and it always deletes soft-deleted documents, expired sessions, and abandoned uploads.
-- New staff are members. There is no domain allowlist until one is set. Production Access is the gate in front of the worker.
+- New staff are members. There is no domain allowlist until an admin saves one at `PATCH /api/admin/domains`. The match is the exact domain after `@`. Production Access is still the gate in front of the worker. `GET /api/admin/audit/export` downloads the audit log as CSV.
 - A viewer who was not on the recipient list can still verify. That open is audited as `share.forward`.
 - Password policy is 8 to 200 characters, PBKDF2-SHA-256, 100,000 iterations.
 - Grants last 300 seconds, clamped between 30 and 3600 if the var is set.
@@ -87,7 +87,7 @@ Dropped, and what replaces them:
 - `users`, `sessions`, `otp_challenges`, `rate_limits`
 - `documents`, `document_versions`, `uploads`
 - `shares` (`token_hash`, `sealed_token`, no raw token), `share_recipients`, `viewer_sessions`, `grants`, `events`
-- `audit_log`, `retention_policies`, `dev_outbox`
+- `audit_log`, `retention_policies`, `staff_domains`, `dev_outbox`
 
 ## Request path
 

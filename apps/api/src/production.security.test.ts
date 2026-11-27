@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { CSRF_HEADER, PASSWORD_ATTEMPT_LIMIT, PASSWORD_WINDOW_MS, STAFF_COOKIE, VIEWER_COOKIE, cookieValue } from "@mandoc/core";
 import { MemoryStorage } from "@mandoc/cf";
 import { createDb, type Db } from "@mandoc/db";
-import { openTestDatabase } from "../../../packages/db/src/node-d1.ts";
+import { migrationSql, openTestDatabase } from "../../../packages/db/src/node-d1.ts";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
@@ -13,8 +11,7 @@ import { runRetention } from "./retention-job.js";
 const origin = "https://mandoc.example";
 
 function testDb(): Db {
-  const sql = readFileSync(fileURLToPath(new URL("../../../packages/db/migrations/0001_init.sql", import.meta.url)), "utf8");
-  return createDb(openTestDatabase(sql) as D1Database);
+  return createDb(openTestDatabase(migrationSql()) as D1Database);
 }
 
 describe("production config", () => {

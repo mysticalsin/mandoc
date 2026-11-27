@@ -1,14 +1,11 @@
-import { readFileSync } from "node:fs";
 import { shareTokenHash } from "@mandoc/core";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createDb, type Db } from "./client.js";
-import { openTestDatabase } from "./node-d1.js";
+import { migrationSql, openTestDatabase } from "./node-d1.js";
 import { findUserByEmail, insertShare, insertUser, shareColumns } from "./repos.js";
 
 function database(): Db {
-  const sql = readFileSync(fileURLToPath(new URL("../migrations/0001_init.sql", import.meta.url)), "utf8");
-  return createDb(openTestDatabase(sql) as D1Database);
+  return createDb(openTestDatabase(migrationSql()) as D1Database);
 }
 
 describe("schema", () => {

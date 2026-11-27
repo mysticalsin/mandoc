@@ -1,4 +1,4 @@
-import { zipSync, strToU8 } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import {
   canChangeUser,
@@ -21,7 +21,11 @@ import {
   otpMatches,
   otpStillValid,
   planPartCount,
+  auditExportCsv,
+  normalizeStaffDomains,
   previewOffice,
+  staffSignInAllowed,
+  stampOffice,
   readGrant,
   sanitizeAuditMetadata,
   sealSecret,
@@ -163,10 +167,14 @@ describe("http and download gate", () => {
     expect(downloadDecision({ downloadAllowed: false, watermarkEnabled: false, fileType: "pdf", byteSize: 10 })).toBe("deny");
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: false, fileType: "docx", byteSize: 10 })).toBe("allow");
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pdf", byteSize: 10 })).toBe("stamp");
-    expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pptx", byteSize: 10 })).toBe("unstampable");
+    expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pptx", byteSize: 10 })).toBe("stamp");
+    expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "docx", byteSize: 10 })).toBe("stamp");
+    expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "xlsx", byteSize: 33 * 1024 * 1024 })).toBe("stamp");
+    expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pdf", byteSize: 32 * 1024 * 1024 + 1 })).toBe("stamp");
     expect(downloadDecision({ downloadAllowed: false, watermarkEnabled: false, fileType: "xlsx", byteSize: 10 })).toBe("deny");
     expect(viewDecision({ watermarkEnabled: true, fileType: "pdf", byteSize: 10 })).toBe("stamp");
-    expect(viewDecision({ watermarkEnabled: true, fileType: "docx", byteSize: 10 })).toBe("unstampable");
+    expect(viewDecision({ watermarkEnabled: true, fileType: "pdf", byteSize: 32 * 1024 * 1024 + 1 })).toBe("stamp");
+    expect(viewDecision({ watermarkEnabled: true, fileType: "docx", byteSize: 10 })).toBe("stamp");
     expect(viewDecision({ watermarkEnabled: false, fileType: "pdf", byteSize: 10 })).toBe("allow");
     expect(viewDecision({ watermarkEnabled: false, fileType: "docx", byteSize: 10 })).toBe("preview");
     expect(viewDecision({ watermarkEnabled: false, fileType: "pptx", byteSize: MAX_PREVIEW_BYTES })).toBe("preview");
@@ -217,5 +225,60 @@ describe("office preview", () => {
     expect(previewOffice(new Uint8Array([1, 2, 3]), "docx")).toBeNull();
     const huge = new Uint8Array(MAX_PREVIEW_ENTRY_BYTES + 1);
     expect(previewOffice(zipSync({ "word/document.xml": huge }), "docx")).toBeNull();
+  });
+});
+
+describe("office stamp", () => {
+  it("writes the email into docx, pptx, and xlsx bytes and refuses a bad package", () => {
+    const docx = zipSync({
+      "word/document.xml": strToU8(
+        `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Quarterly note</w:t></w:r></w:p></w:body></w:document>`,
+      ),
+    });
+    const stampedDoc = stampOffice(docx, "docx", "viewer@example.com");
+    const docXml = strFromU8(unzipSync(stampedDoc ?? new Uint8Array())["word/document.xml"] ?? new Uint8Array());
+    expect(docXml).toContain("viewer@example.com");
+    expect(docXml).toContain("Quarterly note");
+    const pptx = zipSync({
+      "ppt/slides/slide1.xml": strToU8(
+        `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree></p:spTree></p:cSld></p:sld>`,
+      ),
+    });
+    const slideXml = strFromU8(unzipSync(stampOffice(pptx, "pptx", "viewer@example.com") ?? new Uint8Array())["ppt/slides/slide1.xml"] ?? new Uint8Array());
+    expect(slideXml).toContain("viewer@example.com");
+    const xlsx = zipSync({
+      "xl/worksheets/sheet1.xml": strToU8(`<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>`),
+    });
+    const sheetXml = strFromU8(unzipSync(stampOffice(xlsx, "xlsx", "viewer@example.com") ?? new Uint8Array())["xl/worksheets/sheet1.xml"] ?? new Uint8Array());
+    expect(sheetXml).toContain("viewer@example.com");
+    expect(sheetXml).toContain("<v>1</v>");
+    expect(stampOffice(new Uint8Array([1, 2, 3]), "docx", "viewer@example.com")).toBeNull();
+  });
+});
+
+describe("staff domains and audit export", () => {
+  it("leaves sign-in open until a domain list is set", () => {
+    expect(staffSignInAllowed("ada@example.com", null)).toBe(true);
+    expect(staffSignInAllowed("ada@example.com", ["example.com"])).toBe(true);
+    expect(staffSignInAllowed("ada@sub.example.com", ["example.com"])).toBe(false);
+    expect(normalizeStaffDomains([])).toBeNull();
+    expect(normalizeStaffDomains(["Example.com"])).toEqual(["example.com"]);
+    expect(normalizeStaffDomains(["not a domain"])).toBe("invalid");
+  });
+
+  it("exports audit rows as csv", () => {
+    const csv = auditExportCsv([
+      {
+        id: "aud_1",
+        createdAt: Date.parse("2026-11-26T12:00:00Z"),
+        action: "user.sign_in",
+        actorEmail: "=ada@example.com",
+        targetType: "user",
+        targetId: "usr_1",
+        metadata: { role: "admin" },
+      },
+    ]);
+    expect(csv).toContain("2026-11-26T12:00:00.000Z");
+    expect(csv).toContain("'=ada@example.com");
   });
 });

@@ -17,9 +17,15 @@ import {
   csrfAllows,
   PASSWORD_ATTEMPT_LIMIT,
   PASSWORD_WINDOW_MS,
+  PDF_LIB_STAMP_BYTES,
+  auditExportCsv,
   downloadDecision,
   MAX_PREVIEW_BYTES,
+  normalizeStaffDomains,
   previewOffice,
+  staffSignInAllowed,
+  stampOffice,
+  stampPdfIncremental,
   viewDecision,
   expiryAllowed,
   generateOtpCode,
@@ -59,6 +65,7 @@ import {
   passwordSchema,
   retentionSchema,
   roleChangeSchema,
+  staffDomainsSchema,
   shareCreateSchema,
   uploadCreateSchema,
   type Actor,
@@ -98,7 +105,9 @@ import {
   latestReadyVersion,
   listAllShares,
   listAudit,
+  listAuditExport,
   listLibrary,
+  listStaffDomains,
   listOutbox,
   listSharesForDocument,
   listUsers,
@@ -108,6 +117,7 @@ import {
   readParts,
   recordEvent,
   replaceOtp,
+  replaceStaffDomains,
   deleteOtp,
   revokeShare,
   saveUploadPart,
@@ -248,6 +258,7 @@ export function createApp(deps: AppDeps) {
 
   async function issueStaff(email: string): Promise<string> {
     const now = clock.now();
+    if (!staffSignInAllowed(email, await listStaffDomains(db))) throw new Error("domain");
     let user = await findUserByEmail(db, email);
     if (!user) {
       user = await insertUser(db, { email, role: email === config.bootstrapAdminEmail ? "admin" : "member", now });
@@ -283,7 +294,7 @@ export function createApp(deps: AppDeps) {
     const ip = c.req.header("cf-connecting-ip") ?? "local";
     const emailCount = await bumpRate(db, `staff-otp:${email}`, OTP_WINDOW_MS, now);
     const ipCount = await bumpRate(db, `staff-otp-ip:${ip}`, OTP_WINDOW_MS, now);
-    if (rateAllows(emailCount - 1, OTP_EMAIL_LIMIT) && rateAllows(ipCount - 1, 30)) {
+    if (rateAllows(emailCount - 1, OTP_EMAIL_LIMIT) && rateAllows(ipCount - 1, 30) && staffSignInAllowed(email, await listStaffDomains(db))) {
       const code = generateOtpCode();
       await replaceOtp(db, {
         purpose: "staff",
@@ -777,11 +788,30 @@ export function createApp(deps: AppDeps) {
     if (decision === "stamp") {
       const full = await storage.get(version.r2Key);
       if (!full) return c.json(hiddenBody(), 404);
-      let stamped: Uint8Array;
+      let stamped: Uint8Array | null;
       try {
-        stamped = await stampPdf(full.bytes, session.email);
+        if (fileType === "pdf") {
+          stamped =
+            version.byteSize > PDF_LIB_STAMP_BYTES
+              ? stampPdfIncremental(full.bytes, session.email)
+              : await stampPdf(full.bytes, session.email);
+        } else {
+          stamped = stampOffice(full.bytes, fileType, session.email);
+        }
       } catch {
-        return c.json({ error: "unstampable" }, 403);
+        stamped = null;
+      }
+      if (!stamped) return c.json({ error: "unstampable" }, 403);
+      if (fileType !== "pdf" && mode === "view") {
+        let preview: ReturnType<typeof previewOffice> = null;
+        try {
+          preview = previewOffice(stamped, fileType);
+        } catch {
+          preview = null;
+        }
+        if (!preview) return c.json({ error: "unstampable" }, 403);
+        await recordEvent(db, { shareId: share.id, sessionId: session.id, type: "open", page: null, now: clock.now() });
+        return c.json(preview);
       }
       const filename = version.filename.replaceAll('"', "");
       let offset = 0;
@@ -812,7 +842,7 @@ export function createApp(deps: AppDeps) {
         });
       }
       const headers = new Headers({
-        "content-type": "application/pdf",
+        "content-type": FILE_TYPES[fileType],
         "content-length": String(body.byteLength),
         "accept-ranges": "bytes",
         "content-disposition": `${mode === "download" ? "attachment" : "inline"}; filename="${filename}"`,
@@ -933,6 +963,54 @@ export function createApp(deps: AppDeps) {
     const user = await requireAdmin(c);
     if (user instanceof Response) return user;
     return c.json({ audit: await listAudit(db) });
+  });
+
+  app.get("/api/admin/audit/export", async (c) => {
+    const user = await requireAdmin(c);
+    if (user instanceof Response) return user;
+    const now = clock.now();
+    await writeAudit(db, {
+      actorId: user.id,
+      actorEmail: user.email,
+      action: AUDIT.export,
+      targetType: "audit",
+      targetId: null,
+      metadata: {},
+      now,
+    });
+    const csv = auditExportCsv(await listAuditExport(db));
+    return new Response(csv, {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": 'attachment; filename="audit.csv"',
+      },
+    });
+  });
+
+  app.get("/api/admin/domains", async (c) => {
+    const user = await requireAdmin(c);
+    if (user instanceof Response) return user;
+    return c.json({ domains: await listStaffDomains(db) });
+  });
+
+  app.patch("/api/admin/domains", async (c) => {
+    const user = await requireAdmin(c);
+    if (user instanceof Response) return user;
+    const parsed = staffDomainsSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "invalid" }, 400);
+    const domains = normalizeStaffDomains(parsed.data.domains ?? []);
+    if (domains === "invalid") return c.json({ error: "invalid" }, 400);
+    await replaceStaffDomains(db, domains ?? []);
+    await writeAudit(db, {
+      actorId: user.id,
+      actorEmail: user.email,
+      action: AUDIT.domains,
+      targetType: "staff_domains",
+      targetId: null,
+      metadata: { count: domains?.length ?? 0 },
+      now: clock.now(),
+    });
+    return c.json({ domains });
   });
 
   app.get("/api/dev/outbox", async (c) => {
