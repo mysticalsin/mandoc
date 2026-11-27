@@ -56,7 +56,7 @@ Dropped, and what replaces them:
 
 | Dropped | Replacement |
 |---|---|
-| HLS, hls.js, segment grants | PDF.js for PDF. Office view is text rendered in the browser, not the package |
+| HLS, hls.js, segment grants | PDF.js for PDF. Office view keeps headings, tables, slide positions, and sheet cells. It is not the package |
 | Watermark burned into a video frame | PDF view and download are stamped. Office packages are rewritten. A file that cannot be stamped is refused |
 | Media container, ffmpeg, Durable Object | Nothing. The worker stores the original bytes |
 | Whisper, Workers AI, Vectorize, transcript search | Nothing. No model |
@@ -66,10 +66,10 @@ Dropped, and what replaces them:
 ## Decisions
 
 - PDF.js in the browser. The worker does not render pages.
-- Office preview reads text out of the zip in the worker. The browser renders paragraphs, slides, or a sheet. The view response is JSON, not the package and not a storage URL. It is not a layout preview. Conversion to PDF is not in this slice.
+- Office preview reads structure out of the zip in the worker. The browser places headings and tables, slide text at its package position, and sheet cells in their rows and columns. The view response is JSON, not the package and not a storage URL. Conversion to PDF is not in this slice.
 - Copy-link only. `MAILER=disabled` in production. Local dev uses `dev-outbox`.
 - View is the default. Download and watermark are off until the sender turns them on.
-- Watermark on means the served bytes are stamped. The server does not return the original. PDFs up to 32 MiB are rewritten with pdf-lib. Larger PDFs get an incremental update that leaves the original streams in place. Office files are rewritten in the package. An Office view is still the text preview, taken from the stamped package when the watermark is on, and it is not the package. If stamping fails, the response is 403 `unstampable`. The page also draws the email as an overlay on a PDF. Screen capture is not prevented.
+- Watermark on means the served bytes are stamped. The server does not return the original. PDFs up to 32 MiB are rewritten with pdf-lib. Larger PDFs get an incremental update that leaves the original streams in place. Office files are rewritten in the package. An Office view is the layout preview, taken from the stamped package when the watermark is on, and it is not the package. If stamping fails, the response is 403 `unstampable`. The page also draws the email as an overlay on a PDF. Screen capture is not prevented.
 - Share expiry must sit between 5 minutes and 366 days. That cap is a safety limit, not a retention period.
 - Document retention days start null, so a new deploy does not age out live files. An admin sets the number at `PATCH /api/admin/retention`. The purge job then deletes live documents older than that many days, and it always deletes soft-deleted documents, expired sessions, and abandoned uploads.
 - New staff are members. There is no domain allowlist until an admin saves one at `PATCH /api/admin/domains`. The match is the exact domain after `@`. Production Access is still the gate in front of the worker. `GET /api/admin/audit/export` downloads the audit log as CSV.
