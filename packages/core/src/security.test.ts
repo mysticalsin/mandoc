@@ -226,6 +226,64 @@ describe("office preview", () => {
     const huge = new Uint8Array(MAX_PREVIEW_ENTRY_BYTES + 1);
     expect(previewOffice(zipSync({ "word/document.xml": huge }), "docx")).toBeNull();
   });
+
+  it("keeps headings, tables, slide positions, and sheet cells", () => {
+    const docx = zipSync({
+      "word/document.xml": strToU8(
+        `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Plan</w:t></w:r></w:p>
+          <w:p><w:r><w:t>First</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+        </w:body></w:document>`,
+      ),
+    });
+    const note = previewOffice(docx, "docx");
+    expect(note?.kind).toBe("docx");
+    if (note?.kind === "docx") {
+      expect(note.blocks).toEqual([
+        { kind: "heading", level: 1, text: "Plan" },
+        { kind: "paragraph", text: "First" },
+        { kind: "table", rows: [["A", "B"]] },
+      ]);
+    }
+
+    const pptx = zipSync({
+      "ppt/presentation.xml": strToU8(
+        `<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:sldSz cx="1000" cy="1000"/></p:presentation>`,
+      ),
+      "ppt/slides/slide1.xml": strToU8(
+        `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>
+          <p:sp><p:spPr><a:xfrm><a:off x="100" y="100"/><a:ext cx="400" cy="80"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Title</a:t></a:r></a:p></p:txBody></p:sp>
+          <p:sp><p:spPr><a:xfrm><a:off x="100" y="500"/><a:ext cx="400" cy="200"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Body</a:t></a:r></a:p></p:txBody></p:sp>
+        </p:spTree></p:cSld></p:sld>`,
+      ),
+    });
+    const deck = previewOffice(pptx, "pptx");
+    const boxes = deck?.kind === "pptx" ? (deck.frames[0]?.boxes ?? []) : [];
+    expect(boxes.map((box) => box.text)).toEqual(["Title", "Body"]);
+    expect(boxes[0]).toMatchObject({ x: 0.1, y: 0.1, w: 0.4, h: 0.08 });
+    expect(boxes[0]?.y).toBeLessThan(boxes[1]?.y ?? 0);
+
+    const xlsx = zipSync({
+      "xl/workbook.xml": strToU8(
+        `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Figures" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      ),
+      "xl/_rels/workbook.xml.rels": strToU8(
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+      ),
+      "xl/worksheets/sheet1.xml": strToU8(
+        `<worksheet><sheetData>
+          <row r="1"><c r="A1" t="inlineStr"><is><t>Name</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row>
+          <row r="3"><c r="B3"><v>12</v></c></row>
+        </sheetData></worksheet>`,
+      ),
+    });
+    const book = previewOffice(xlsx, "xlsx");
+    expect(book?.kind).toBe("xlsx");
+    if (book?.kind === "xlsx") {
+      expect(book.sheets).toEqual([{ name: "Figures", rows: [["Name", "Amount"], [], ["", "12"]] }]);
+    }
+  });
 });
 
 describe("office stamp", () => {

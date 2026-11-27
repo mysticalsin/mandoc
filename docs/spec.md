@@ -33,9 +33,9 @@ An admin lists users and can change another user's role or disable them. An admi
 | Type | Upload | View | Download |
 |---|---|---|---|
 | PDF | Yes | PDF.js of the stamped bytes when the watermark is on | Stamped when the watermark is on. Refused when download is off |
-| DOCX, PPTX, XLSX | Yes | In-browser text from the worker. The response is not the package. When the watermark is on, the text is taken from the stamped package | Stamped when the watermark is on. Original when download is on and the watermark is off. Refused when download is off |
+| DOCX, PPTX, XLSX | Yes | In-browser layout from the worker: headings and tables, slide positions, or sheet cells. The response is JSON, not the package. When the watermark is on, the layout is taken from the stamped package | Stamped when the watermark is on. Original when download is on and the watermark is off. Refused when download is off |
 
-Layout-faithful Office rendering is not this slice. A PDF larger than 32 MiB is stamped by appending an incremental update. The original streams stay in the file. A package or PDF that cannot be stamped is refused.
+The Office view keeps headings, tables, slide positions, and sheet cells from the package. It is not a pixel copy of the desktop program. A PDF larger than 32 MiB is stamped by appending an incremental update. The original streams stay in the file. A package or PDF that cannot be stamped is refused.
 
 ## Out of scope
 

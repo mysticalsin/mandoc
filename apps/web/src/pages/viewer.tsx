@@ -1,4 +1,4 @@
-import { type FileType, type OfficePreview } from "@mandoc/core";
+import { type DocxBlock, type FileType, type OfficePreview, type OfficeSheet, type SlideBox } from "@mandoc/core";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useParams } from "react-router";
 import { Button } from "../components/ui/button.js";
@@ -157,14 +157,81 @@ export function ViewerPage() {
 
 function OfficeView({ preview }: { preview: OfficePreview | null }) {
   if (!preview) return null;
-  if (preview.kind === "xlsx") {
-    if (preview.rows.length === 0) return <p className="p-4 text-sm">No preview</p>;
+  if (preview.kind === "xlsx") return <SheetStack sheets={preview.sheets.length > 0 ? preview.sheets : [{ name: "Sheet", rows: preview.rows }]} />;
+  if (preview.kind === "pptx") return <SlideStack preview={preview} />;
+  if (preview.blocks.length === 0 && preview.paragraphs.length === 0) return <p className="p-4 text-sm">No preview</p>;
+  const blocks = preview.blocks.length > 0 ? preview.blocks : preview.paragraphs.map((text) => ({ kind: "paragraph" as const, text }));
+  return (
+    <article className="space-y-3 px-8 py-6">
+      {blocks.map((block, index) => (
+        <DocxBlockView key={index} block={block} />
+      ))}
+    </article>
+  );
+}
+
+function DocxBlockView({ block }: { block: DocxBlock }) {
+  if (block.kind === "heading") {
+    const Tag = block.level <= 1 ? "h2" : "h3";
+    return <Tag className={block.level <= 1 ? "text-xl" : "text-lg"}>{block.text}</Tag>;
+  }
+  if (block.kind === "table") {
     return (
-      <div className="overflow-auto p-4">
-        <table className="w-full border-collapse text-left text-sm">
+      <table className="w-full border-collapse text-left text-sm">
+        <tbody>
+          {block.rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex} className="border border-[#d9d3c7] px-2 py-1">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+  return <p className="text-sm leading-6">{block.text}</p>;
+}
+
+function SlideStack({ preview }: { preview: Extract<OfficePreview, { kind: "pptx" }> }) {
+  const frames = preview.frames.length > 0 ? preview.frames : preview.slides.map((text) => [{ text, x: 0.08, y: 0.08, w: 0.84, h: 0.16 }]).map((boxes) => ({ boxes }));
+  if (frames.length === 0) return <p className="p-4 text-sm">No preview</p>;
+  return (
+    <div>
+      {frames.map((frame, index) => (
+        <div key={index} className="relative aspect-video w-full border-b border-[#d9d3c7] bg-white">
+          {frame.boxes.map((box, boxIndex) => (
+            <SlideText key={boxIndex} box={box} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SlideText({ box }: { box: SlideBox }) {
+  return (
+    <p
+      className="absolute overflow-hidden whitespace-pre-wrap text-sm"
+      style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${Math.max(box.w, 0.05) * 100}%`, height: `${Math.max(box.h, 0.05) * 100}%` }}
+    >
+      {box.text}
+    </p>
+  );
+}
+
+function SheetStack({ sheets }: { sheets: OfficeSheet[] }) {
+  if (sheets.every((sheet) => sheet.rows.length === 0)) return <p className="p-4 text-sm">No preview</p>;
+  return (
+    <div className="space-y-6 overflow-auto p-4">
+      {sheets.map((sheet) => (
+        <table key={sheet.name} className="w-full border-collapse text-left text-sm">
+          {sheets.length > 1 || sheet.name !== "Sheet" ? <caption className="mb-2 text-left">{sheet.name}</caption> : null}
           <tbody>
-            {preview.rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
+            {sheet.rows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="h-7">
                 {row.map((cell, cellIndex) => (
                   <td key={cellIndex} className="border border-[#d9d3c7] px-2 py-1">
                     {cell}
@@ -174,29 +241,6 @@ function OfficeView({ preview }: { preview: OfficePreview | null }) {
             ))}
           </tbody>
         </table>
-      </div>
-    );
-  }
-  if (preview.kind === "pptx") {
-    if (preview.slides.length === 0) return <p className="p-4 text-sm">No preview</p>;
-    return (
-      <div className="space-y-4 p-4">
-        {preview.slides.map((slide, index) => (
-          <section key={index} className="rounded-md border border-[#d9d3c7] p-4">
-            <h2 className="mb-2 text-sm text-[#5c564e]">Slide {index + 1}</h2>
-            <p className="whitespace-pre-wrap text-sm">{slide || " "}</p>
-          </section>
-        ))}
-      </div>
-    );
-  }
-  if (preview.paragraphs.length === 0) return <p className="p-4 text-sm">No preview</p>;
-  return (
-    <div className="space-y-3 p-4">
-      {preview.paragraphs.map((paragraph, index) => (
-        <p key={index} className="text-sm">
-          {paragraph}
-        </p>
       ))}
     </div>
   );

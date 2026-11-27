@@ -149,6 +149,72 @@ test("previews docx, pptx, and xlsx in the browser", async ({ page, browser }) =
   await expect(blocked.getByRole("button", { name: "Download" })).toHaveCount(0);
 });
 
+test("office preview keeps layout", async ({ page, browser }) => {
+  await signIn(page, "ada@example.com");
+  const docx = zipSync({
+    "word/document.xml": strToU8(
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Plan</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>North</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>South</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
+    ),
+  });
+  const pptx = zipSync({
+    "ppt/presentation.xml": strToU8(`<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldSz cx="1000" cy="1000"/></p:presentation>`),
+    "ppt/slides/slide1.xml": strToU8(
+      `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="100" y="100"/><a:ext cx="400" cy="80"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Title</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:spPr><a:xfrm><a:off x="100" y="500"/><a:ext cx="400" cy="200"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Body</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    ),
+  });
+  await page.locator("input[type=file]").setInputFiles({
+    name: "plan.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer: Buffer.from(docx),
+  });
+  await page.getByRole("link", { name: /plan\.docx/ }).click();
+  await page.getByRole("button", { name: "Share" }).click();
+  await page.getByLabel("Recipients").fill("layout@example.com");
+  await page.getByRole("button", { name: "Create" }).click();
+  const docLink = await page.getByLabel("Link").inputValue();
+  const viewer = await browser.newPage();
+  await viewer.goto(docLink);
+  await viewer.getByLabel("Email").fill("layout@example.com");
+  await viewer.getByRole("button", { name: "Continue" }).click();
+  await expect(viewer.getByLabel("Code")).toHaveValue(/\d{6}/);
+  await viewer.getByRole("button", { name: "Sign in" }).click();
+  const heading = viewer.getByRole("heading", { name: "Plan" });
+  await expect(heading).toBeVisible();
+  const north = viewer.getByRole("cell", { name: "North" });
+  const south = viewer.getByRole("cell", { name: "South" });
+  await expect(north).toBeVisible();
+  await expect(south).toBeVisible();
+  const northBox = await north.boundingBox();
+  const southBox = await south.boundingBox();
+  expect(northBox && southBox && southBox.x > northBox.x).toBe(true);
+  await viewer.close();
+
+  await page.getByRole("link", { name: "Library" }).click();
+  await page.locator("input[type=file]").setInputFiles({
+    name: "deck-layout.pptx",
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    buffer: Buffer.from(pptx),
+  });
+  await page.getByRole("link", { name: /deck-layout\.pptx/ }).click();
+  await page.getByRole("button", { name: "Share" }).click();
+  await page.getByLabel("Recipients").fill("slides@example.com");
+  await page.getByRole("button", { name: "Create" }).click();
+  const slideLink = await page.getByLabel("Link").inputValue();
+  const slides = await browser.newPage();
+  await slides.goto(slideLink);
+  await slides.getByLabel("Email").fill("slides@example.com");
+  await slides.getByRole("button", { name: "Continue" }).click();
+  await expect(slides.getByLabel("Code")).toHaveValue(/\d{6}/);
+  await slides.getByRole("button", { name: "Sign in" }).click();
+  const title = slides.getByText("Title", { exact: true });
+  const body = slides.getByText("Body", { exact: true });
+  await expect(title).toBeVisible();
+  await expect(body).toBeVisible();
+  const titleBox = await title.boundingBox();
+  const bodyBox = await body.boundingBox();
+  expect(titleBox && bodyBox && bodyBox.y > titleBox.y).toBe(true);
+});
+
 test("a member cannot open admin", async ({ page }) => {
   await signIn(page, "bea@example.com");
   await page.goto("/admin/users");

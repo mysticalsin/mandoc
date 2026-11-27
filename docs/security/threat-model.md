@@ -32,7 +32,7 @@ ManDoc holds staff documents and the email addresses of people who open them. Th
 
 - The on-screen watermark is also CSS. The bytes of a watermarked PDF already contain the email, including on the view route. Someone can still photograph the screen.
 - A screenshot or a camera is not stopped.
-- Office preview is text extraction rendered in the browser. It is not a layout-faithful render, and it is not a statement that the file is safe to open in another program.
+- Office preview keeps the headings, tables, slide positions, and sheet cells it can read. It is not a pixel copy of the desktop program, and it is not a statement that the file is safe to open in another program.
 - Rate limits are best-effort counters in D1, not a global lock.
 - Access JWT verification is implemented and tested with a local key. This environment has not called a live Access team.
 
