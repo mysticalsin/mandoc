@@ -1,0 +1,22 @@
+{
+  "name": "@mandoc/cf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mandoc/core": "0.1.0",
+    "@mandoc/db": "0.1.0",
+    "jose": "^6.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251120.0",
+    "vitest": "^3.2.4"
+  }
+}

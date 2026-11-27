@@ -1,0 +1,17 @@
+rules:
+  - id: mandoc-no-raw-r2-url
+    message: Do not embed a raw R2 URL. Document bytes go through a signed grant.
+    languages: [ts, js]
+    severity: ERROR
+    pattern-regex: 'r2\.cloudflarestorage\.com|\.r2\.dev'
+  - id: mandoc-no-eval
+    message: eval is not allowed.
+    languages: [ts, js]
+    severity: ERROR
+    patterns:
+      - pattern: eval(...)
+  - id: mandoc-no-private-key
+    message: Private keys do not belong in the repository.
+    languages: [ts, js, json]
+    severity: ERROR
+    pattern-regex: 'BEGIN (RSA |OPENSSH )?PRIVATE KEY'

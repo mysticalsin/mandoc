@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  background: #f4f1ea;
+  color: #1c1915;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}

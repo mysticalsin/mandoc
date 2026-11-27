@@ -1,0 +1,13 @@
+node_modules/
+.cache/
+dist/
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
+test-results/
+playwright-report/
+.vitest/
+e2e/.auth/
+*.tsbuildinfo
