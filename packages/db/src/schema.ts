@@ -148,6 +148,11 @@ export const retentionPolicies = sqliteTable("retention_policies", {
   days: integer("days", { mode: "number" }),
 });
 
+/** Empty means the owner has not set a staff sign-in allowlist. */
+export const staffDomains = sqliteTable("staff_domains", {
+  domain: text("domain").primaryKey(),
+});
+
 export const devOutbox = sqliteTable("dev_outbox", {
   id: text("id").primaryKey(),
   kind: text("kind").notNull(),

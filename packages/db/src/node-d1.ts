@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 
 function normalize(params: unknown[]): SQLInputValue[] {
@@ -67,6 +70,15 @@ export function nodeD1(db: DatabaseSync): unknown {
       return Promise.resolve(new ArrayBuffer(0));
     },
   };
+}
+
+export function migrationSql(): string {
+  const dir = fileURLToPath(new URL("../migrations/", import.meta.url));
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()
+    .map((name) => readFileSync(join(dir, name), "utf8"))
+    .join("\n");
 }
 
 export function openTestDatabase(sql: string): unknown {

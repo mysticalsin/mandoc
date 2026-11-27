@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { CSRF_HEADER, STAFF_COOKIE, cookieValue, shareTokenHash } from "@mandoc/core";
 import { MemoryStorage } from "@mandoc/cf";
 import { createDb, findShareByHash, type Db } from "@mandoc/db";
-import { openTestDatabase } from "../../packages/db/src/node-d1.ts";
+import { migrationSql, openTestDatabase } from "../../packages/db/src/node-d1.ts";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { createApp } from "../../apps/api/src/app.ts";
 import { parseConfig, type AppConfig } from "../../apps/api/src/config.ts";
@@ -33,8 +31,7 @@ const config: AppConfig = {
 };
 
 function database(): Db {
-  const sql = readFileSync(fileURLToPath(new URL("../../packages/db/migrations/0001_init.sql", import.meta.url)), "utf8");
-  return createDb(openTestDatabase(sql) as D1Database);
+  return createDb(openTestDatabase(migrationSql()) as D1Database);
 }
 
 async function call(app: ReturnType<typeof createApp>, path: string, init: { method?: string; cookie?: string; json?: unknown; csrf?: boolean; url?: string } = {}) {

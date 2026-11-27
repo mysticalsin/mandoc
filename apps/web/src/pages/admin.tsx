@@ -31,6 +31,8 @@ interface AuditRow {
 export function UsersPage() {
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [days, setDays] = useState("");
+  const [domains, setDomains] = useState("");
+  const [invalid, setInvalid] = useState(false);
   const [error, setError] = useState("");
 
   async function load() {
@@ -38,6 +40,8 @@ export function UsersPage() {
       setUsers((await api<{ users: UserRow[] }>("/api/admin/users")).users);
       const policy = await api<{ days: number | null }>("/api/admin/retention");
       setDays(policy.days == null ? "" : String(policy.days));
+      const allow = await api<{ domains: string[] | null }>("/api/admin/domains");
+      setDomains(allow.domains?.join(", ") ?? "");
     } catch {
       setError("Not found");
     }
@@ -50,6 +54,21 @@ export function UsersPage() {
     await load();
   }
 
+  async function saveDomains(event: FormEvent) {
+    event.preventDefault();
+    const list = domains
+      .split(",")
+      .map((domain) => domain.trim())
+      .filter((domain) => domain.length > 0);
+    try {
+      await api("/api/admin/domains", { method: "PATCH", json: { domains: list.length === 0 ? null : list } });
+      setInvalid(false);
+      await load();
+    } catch {
+      setInvalid(true);
+    }
+  }
+
   useEffect(() => {
     void load();
   }, []);
@@ -60,13 +79,21 @@ export function UsersPage() {
   return (
     <main>
       <h1 className="mb-4 text-2xl">Users</h1>
-      <form className="mb-6 flex max-w-xs items-end gap-2" onSubmit={(event) => void saveRetention(event)}>
+      <form className="mb-3 flex max-w-xs items-end gap-2" onSubmit={(event) => void saveRetention(event)}>
         <label className="block flex-1 text-sm">
           Days
           <Input className="mt-1" inputMode="numeric" value={days} onChange={(event) => setDays(event.target.value)} />
         </label>
         <Button type="submit">Save</Button>
       </form>
+      <form className="mb-6 flex max-w-md items-end gap-2" onSubmit={(event) => void saveDomains(event)}>
+        <label className="block flex-1 text-sm">
+          Domains
+          <Input className="mt-1" value={domains} onChange={(event) => setDomains(event.target.value)} />
+        </label>
+        <Button type="submit">Save</Button>
+      </form>
+      {invalid ? <p className="mb-4 text-sm text-[#7a2e2e]">Invalid</p> : null}
       <ul className="divide-y divide-[#d9d3c7] border-y border-[#d9d3c7]">
         {users.map((user) => (
           <li key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
@@ -156,12 +183,29 @@ export function AuditPage() {
       .catch(() => setError("Not found"));
   }, []);
 
+  async function exportLog() {
+    const response = await fetch("/api/admin/audit/export", { credentials: "include", headers: { "X-Mandoc-Request": "1" } });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "audit.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (error) return <h1 className="text-2xl">Not found</h1>;
   if (!rows) return <p>Loading</p>;
 
   return (
     <main>
-      <h1 className="mb-4 text-2xl">Audit</h1>
+      <div className="mb-4 flex items-baseline justify-between gap-3">
+        <h1 className="text-2xl">Audit</h1>
+        <Button variant="ghost" onClick={() => void exportLog()}>
+          Export
+        </Button>
+      </div>
       <ul className="divide-y divide-[#d9d3c7] border-y border-[#d9d3c7] text-sm">
         {rows.map((row) => (
           <li key={row.id} className="grid gap-1 py-3 sm:grid-cols-[12rem_1fr_auto]">
