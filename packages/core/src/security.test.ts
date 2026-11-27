@@ -6,6 +6,8 @@ import {
   csrfAllows,
   documentDue,
   downloadDecision,
+  MAX_PREVIEW_BYTES,
+  MAX_PREVIEW_ENTRY_BYTES,
   viewDecision,
   expiryAllowed,
   generateOtpCode,
@@ -162,9 +164,13 @@ describe("http and download gate", () => {
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: false, fileType: "docx", byteSize: 10 })).toBe("allow");
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pdf", byteSize: 10 })).toBe("stamp");
     expect(downloadDecision({ downloadAllowed: true, watermarkEnabled: true, fileType: "pptx", byteSize: 10 })).toBe("unstampable");
+    expect(downloadDecision({ downloadAllowed: false, watermarkEnabled: false, fileType: "xlsx", byteSize: 10 })).toBe("deny");
     expect(viewDecision({ watermarkEnabled: true, fileType: "pdf", byteSize: 10 })).toBe("stamp");
     expect(viewDecision({ watermarkEnabled: true, fileType: "docx", byteSize: 10 })).toBe("unstampable");
     expect(viewDecision({ watermarkEnabled: false, fileType: "pdf", byteSize: 10 })).toBe("allow");
+    expect(viewDecision({ watermarkEnabled: false, fileType: "docx", byteSize: 10 })).toBe("preview");
+    expect(viewDecision({ watermarkEnabled: false, fileType: "pptx", byteSize: MAX_PREVIEW_BYTES })).toBe("preview");
+    expect(viewDecision({ watermarkEnabled: false, fileType: "xlsx", byteSize: MAX_PREVIEW_BYTES + 1 })).toBe("unstampable");
   });
 });
 
@@ -199,12 +205,17 @@ describe("office preview", () => {
     const docx = zipSync({ "word/document.xml": strToU8("<w:document><w:t>Quarterly note</w:t></w:document>") });
     const pptx = zipSync({ "ppt/slides/slide1.xml": strToU8("<a:t>Board slide</a:t>") });
     const xlsx = zipSync({
-      "xl/sharedStrings.xml": strToU8('<sst><si><t>Revenue</t></si></sst>'),
-      "xl/worksheets/sheet1.xml": strToU8('<sheetData><c t="s"><v>0</v></c></sheetData>'),
+      "xl/sharedStrings.xml": strToU8("<sst><si><t>Revenue</t></si></sst>"),
+      "xl/worksheets/sheet1.xml": strToU8('<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>12</v></c></row></sheetData>'),
     });
-    expect(previewOffice(docx, "docx")?.text).toContain("Quarterly note");
+    expect(previewOffice(docx, "docx")).toMatchObject({ kind: "docx", paragraphs: ["Quarterly note"] });
     expect(previewOffice(pptx, "pptx")?.text).toContain("Board slide");
-    expect(previewOffice(xlsx, "xlsx")?.text).toContain("Revenue");
+    const sheet = previewOffice(xlsx, "xlsx");
+    expect(sheet?.kind).toBe("xlsx");
+    if (sheet?.kind === "xlsx") expect(sheet.rows).toEqual([["Revenue", "12"]]);
     expect(previewOffice(docx, "pdf")).toBeNull();
+    expect(previewOffice(new Uint8Array([1, 2, 3]), "docx")).toBeNull();
+    const huge = new Uint8Array(MAX_PREVIEW_ENTRY_BYTES + 1);
+    expect(previewOffice(zipSync({ "word/document.xml": huge }), "docx")).toBeNull();
   });
 });

@@ -2,6 +2,8 @@ export const PART_SIZE = 8 * 1024 * 1024;
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 /** pdf-lib has to hold the file to stamp a download. Larger PDFs fail closed. */
 export const MAX_STAMP_BYTES = 32 * 1024 * 1024;
+/** Office preview has to hold the package to extract text. Larger files fail closed. */
+export const MAX_PREVIEW_BYTES = 32 * 1024 * 1024;
 
 export const FILE_TYPES = {
   pdf: "application/pdf",
@@ -43,21 +45,30 @@ export function uploadAllowed(byteSize: number): boolean {
   return Number.isSafeInteger(byteSize) && byteSize > 0 && byteSize <= MAX_UPLOAD_BYTES;
 }
 
-export type DownloadDecision = "allow" | "deny" | "stamp" | "unstampable";
+export type DownloadDecision = "allow" | "deny" | "stamp" | "unstampable" | "preview";
 
 export function downloadDecision(input: {
   downloadAllowed: boolean;
   watermarkEnabled: boolean;
   fileType: FileType;
   byteSize: number;
-}): DownloadDecision {
+}): Exclude<DownloadDecision, "preview"> {
   if (!input.downloadAllowed) return "deny";
-  return viewDecision(input);
-}
-
-/** View never returns the original bytes when a watermark is required. */
-export function viewDecision(input: { watermarkEnabled: boolean; fileType: FileType; byteSize: number }): Exclude<DownloadDecision, "deny"> {
   if (!input.watermarkEnabled) return "allow";
   if (input.fileType !== "pdf" || input.byteSize > MAX_STAMP_BYTES) return "unstampable";
+  return "stamp";
+}
+
+/**
+ * View never returns the original bytes when a watermark is required.
+ * Office view is a text preview, not the package.
+ */
+export function viewDecision(input: { watermarkEnabled: boolean; fileType: FileType; byteSize: number }): Exclude<DownloadDecision, "deny"> {
+  if (input.fileType !== "pdf") {
+    if (input.watermarkEnabled || input.byteSize > MAX_PREVIEW_BYTES) return "unstampable";
+    return "preview";
+  }
+  if (!input.watermarkEnabled) return "allow";
+  if (input.byteSize > MAX_STAMP_BYTES) return "unstampable";
   return "stamp";
 }

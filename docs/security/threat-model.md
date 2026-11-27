@@ -17,9 +17,9 @@ ManDoc holds staff documents and the email addresses of people who open them. Th
 | Read R2 directly | No storage URL is ever returned. The key is `documents/<id>/versions/<id>` |
 | Use a grant after revoke or expiry | Every byte request re-reads the share and the grant row |
 | Forge a grant | HMAC-SHA256. A bad signature is `invalid_grant` and serves nothing |
-| Download when the sender said no | Server returns 403. The UI hiding the button is not the control |
+| Download when the sender said no | Server returns 403. The UI hiding the button is not the control. An Office view is a text preview, not the file |
 | Skip a watermark on a PDF view or download | The server stamps the email into the PDF. A range is taken from the stamped bytes. If stamping throws, the original is not sent |
-| Skip a watermark on an Office file | 403 `unstampable` on view and on download |
+| Skip a watermark on an Office file | 403 `unstampable` on view and on download. The body is not the package |
 | Change a role from a member session | `/api/admin/*` checks the user row on that request |
 | Read another member's document | 404, same as missing |
 | CSRF from another site | `X-Mandoc-Request` and a matching `Origin`, plus `SameSite=Lax` |
@@ -31,7 +31,7 @@ ManDoc holds staff documents and the email addresses of people who open them. Th
 
 - The on-screen watermark is also CSS. The bytes of a watermarked PDF already contain the email, including on the view route. Someone can still photograph the screen.
 - A screenshot or a camera is not stopped.
-- Office preview is text extraction. It is not a statement that the file is safe to open in another program.
+- Office preview is text extraction rendered in the browser. It is not a layout-faithful render, and it is not a statement that the file is safe to open in another program.
 - Rate limits are best-effort counters in D1, not a global lock.
 - Access JWT verification is implemented and tested with a local key. This environment has not called a live Access team.
 

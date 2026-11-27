@@ -56,7 +56,7 @@ Dropped, and what replaces them:
 
 | Dropped | Replacement |
 |---|---|
-| HLS, hls.js, segment grants | PDF.js for PDF. Office files are OOXML text, not video |
+| HLS, hls.js, segment grants | PDF.js for PDF. Office view is text rendered in the browser, not the package |
 | Watermark burned into a video frame | PDF view and download are stamped with pdf-lib. Office bytes are refused while a watermark is on |
 | Media container, ffmpeg, Durable Object | Nothing. The worker stores the original bytes |
 | Whisper, Workers AI, Vectorize, transcript search | Nothing. No model |
@@ -66,10 +66,10 @@ Dropped, and what replaces them:
 ## Decisions
 
 - PDF.js in the browser. The worker does not render pages.
-- Office preview reads text out of the zip. It is not a layout preview. Conversion to PDF is not in this slice.
+- Office preview reads text out of the zip in the worker. The browser renders paragraphs, slides, or a sheet. The view response is JSON, not the package and not a storage URL. It is not a layout preview. Conversion to PDF is not in this slice.
 - Copy-link only. `MAILER=disabled` in production. Local dev uses `dev-outbox`.
 - View is the default. Download and watermark are off until the sender turns them on.
-- Watermark on means the view and the download are a stamped PDF, up to 32 MiB. The server does not return the original bytes. Larger PDFs and Office files fail closed. The page also draws the email as an overlay. Screen capture is not prevented.
+- Watermark on means a PDF view and download are stamped, up to 32 MiB. The server does not return the original bytes. Larger PDFs fail closed. Office files with a watermark fail closed on view and on download. An Office view without a watermark is a text preview up to 32 MiB, still not the package. The page also draws the email as an overlay on a PDF. Screen capture is not prevented.
 - Share expiry must sit between 5 minutes and 366 days. That cap is a safety limit, not a retention period.
 - Document retention days start null, so a new deploy does not age out live files. An admin sets the number at `PATCH /api/admin/retention`. The purge job then deletes live documents older than that many days, and it always deletes soft-deleted documents, expired sessions, and abandoned uploads.
 - New staff are members. There is no domain allowlist until one is set. Production Access is the gate in front of the worker.
@@ -96,7 +96,7 @@ Dropped, and what replaces them:
 3. `GET /api/public/s/:token` returns the title or the same not-found body as a dead link.
 4. OTP verify sets `__Host-mandoc_viewer`.
 5. `POST /api/public/s/:token/grant` returns a grant: `base64url(claims).base64url(hmac)`.
-6. `GET /api/view/:grant` and `GET /api/download/:grant` check the signature, the grant row, the cookie, and the share. Range requests are supported for PDF.js.
+6. `GET /api/view/:grant` and `GET /api/download/:grant` check the signature, the grant row, the cookie, and the share. PDF view supports range requests. Office view returns a text preview. Download returns bytes only when the share allows it.
 
 ## Security headers
 
